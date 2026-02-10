@@ -49,6 +49,7 @@ function mapWorkspaceRow(row: WorkspaceRow): WorkspaceRecord {
 export class WorkspaceStore {
   private readonly database: DatabaseSync;
   private readonly listStatement: StatementSync;
+  private readonly getByIdStatement: StatementSync;
   private readonly insertStatement: StatementSync;
   private readonly deleteStatement: StatementSync;
 
@@ -73,6 +74,12 @@ export class WorkspaceStore {
       SELECT workspace_id, absolute_path, display_name, trusted, created_at, updated_at
       FROM workspaces
       ORDER BY created_at DESC
+    `);
+    this.getByIdStatement = this.database.prepare(`
+      SELECT workspace_id, absolute_path, display_name, trusted, created_at, updated_at
+      FROM workspaces
+      WHERE workspace_id = ?
+      LIMIT 1
     `);
     this.insertStatement = this.database.prepare(`
       INSERT INTO workspaces (
@@ -136,6 +143,15 @@ export class WorkspaceStore {
     const result = this.deleteStatement.run(workspaceId);
     const changes = Number(result.changes ?? 0);
     return changes > 0;
+  }
+
+  getById(workspaceId: string): WorkspaceRecord | null {
+    const row = this.getByIdStatement.get(workspaceId) as WorkspaceRow | undefined;
+    if (!row) {
+      return null;
+    }
+
+    return mapWorkspaceRow(row);
   }
 
   close(): void {

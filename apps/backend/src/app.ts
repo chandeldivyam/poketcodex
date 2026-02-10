@@ -6,6 +6,8 @@ import { authPlugin } from "./auth/plugin.js";
 import type { InMemorySessionStore } from "./auth/session-store.js";
 import type { AppConfig, LogLevel } from "./config.js";
 import { createLoggerOptions } from "./logger.js";
+import { threadPlugin } from "./threads/plugin.js";
+import type { ThreadService } from "./threads/service.js";
 import { workspacePlugin } from "./workspaces/plugin.js";
 import type { WorkspaceService } from "./workspaces/service.js";
 
@@ -16,6 +18,7 @@ export interface BuildAppOptions {
   authConfig?: AppConfig;
   sessionStore?: InMemorySessionStore;
   workspaceService?: WorkspaceService;
+  threadService?: ThreadService;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -54,6 +57,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (options.workspaceService) {
     app.register(workspacePlugin, {
       workspaceService: options.workspaceService
+    });
+  }
+
+  if (options.threadService) {
+    app.register(threadPlugin, {
+      threadService: options.threadService
     });
   }
 
