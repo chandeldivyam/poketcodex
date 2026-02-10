@@ -1,9 +1,9 @@
 {
   "meta": {
     "project": "codex-mobile-web-wsl",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "generated_on": "2026-02-10",
-    "source_plan": "technical-implementation-plan.md",
+    "source_plan": "technical-implementation-plan.md + docs/ui-first-replan.md",
     "primary_objective": "Deliver a secure, mobile-friendly Codex web app on Windows + WSL with Tailscale-only remote access, terminal support, and strong reliability gates."
   },
   "workflow": {
@@ -11,6 +11,7 @@
       "todo",
       "in_progress",
       "blocked",
+      "on_hold",
       "in_review",
       "done"
     ],
@@ -477,6 +478,407 @@
       ]
     },
     {
+      "id": "UI-PHASE-1",
+      "name": "UI Architecture and Design Foundation",
+      "goal": "Stabilize frontend architecture and establish a coherent visual system before deeper feature work.",
+      "estimated_duration_days": 4,
+      "entry_criteria": [
+        "PHASE-1 gate passed.",
+        "Current login/workspace/thread/turn flow is manually verifiable."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "UI-T101",
+          "UI-T102",
+          "UI-T103"
+        ],
+        "required_test_runs": [
+          {
+            "name": "ui-foundation-quality",
+            "commands": [
+              "pnpm --filter @poketcodex/web lint",
+              "pnpm --filter @poketcodex/web typecheck",
+              "pnpm --filter @poketcodex/web test"
+            ],
+            "pass_criteria": "All frontend quality commands pass with no regressions in existing auth/chat flows."
+          },
+          {
+            "name": "ui-foundation-manual-smoke",
+            "commands": [
+              "pnpm --filter @poketcodex/web test:e2e --grep @chat-smoke"
+            ],
+            "pass_criteria": "Manual smoke confirms login -> workspace -> thread -> turn workflow remains intact."
+          }
+        ],
+        "release_blockers": [
+          "Composer focus loss during event stream updates.",
+          "Any full-page rerender on each incoming websocket event."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "UI-T101",
+          "title": "Refactor web app into app shell, feature modules, and explicit state boundaries",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P1-T105"
+          ],
+          "implementation_steps": [
+            "Split current web UI into shell, sidebar/navigation, timeline, and composer feature modules.",
+            "Introduce typed state store boundaries for session, workspace, thread, and stream state.",
+            "Remove render-time coupling that causes whole-view rerenders on event updates."
+          ],
+          "deliverables": [
+            "Modularized frontend folder structure.",
+            "State container interfaces with unit coverage for core reducers/selectors."
+          ],
+          "test_plan": {
+            "unit": [
+              "Reducer and selector tests for workspace/thread/event state transitions."
+            ],
+            "integration": [
+              "Open thread, stream responses, and verify only relevant components rerender."
+            ],
+            "manual": [
+              "Type continuously in composer while stream events arrive and verify no focus loss."
+            ]
+          },
+          "acceptance_criteria": [
+            "UI structure supports incremental feature additions without rewriting root render flow."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T102",
+          "title": "Implement design tokens and responsive layout scaffolding",
+          "priority": "P1",
+          "estimate_days": 1,
+          "dependencies": [
+            "UI-T101"
+          ],
+          "implementation_steps": [
+            "Define design tokens for typography, spacing, radii, color semantics, and motion timing.",
+            "Implement mobile-first breakpoints and shell layout zones (header/navigation/timeline/composer).",
+            "Standardize button/input/card variants used in chat and workspace controls."
+          ],
+          "deliverables": [
+            "Tokenized CSS/theme layer.",
+            "Responsive shell layout with shared UI primitives."
+          ],
+          "test_plan": {
+            "integration": [
+              "Visual regression snapshots at phone, tablet, and desktop widths."
+            ],
+            "manual": [
+              "Validate touch target sizing and keyboard-safe layout at ~390px viewport width."
+            ]
+          },
+          "acceptance_criteria": [
+            "UI has consistent visual language across workspace list, thread panel, timeline, and composer."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T103",
+          "title": "Define typed event normalization and visibility policy",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "UI-T101"
+          ],
+          "implementation_steps": [
+            "Define canonical frontend event model for message, reasoning, tool, status, and error events.",
+            "Implement filter/collapse policy for noisy internal events (e.g., skills update spam).",
+            "Document mapping from backend websocket payloads to timeline-ready UI items."
+          ],
+          "deliverables": [
+            "Event normalization module with tests.",
+            "Event visibility policy doc aligned with timeline renderer requirements."
+          ],
+          "test_plan": {
+            "unit": [
+              "Payload-to-view-model mapping tests for all supported event types."
+            ],
+            "integration": [
+              "Replay captured event streams and verify deterministic normalized output ordering."
+            ]
+          },
+          "acceptance_criteria": [
+            "Timeline pipeline can render meaningful cards without leaking low-value protocol noise by default."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "UI-PHASE-2",
+      "name": "Conversation Experience Quality",
+      "goal": "Make timeline and composer behavior resilient and readable under sustained event streaming.",
+      "estimated_duration_days": 5,
+      "entry_criteria": [
+        "UI-PHASE-1 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "UI-T201",
+          "UI-T202",
+          "UI-T203"
+        ],
+        "required_test_runs": [
+          {
+            "name": "timeline-stream-resilience",
+            "commands": [
+              "pnpm --filter @poketcodex/web test -- --grep stream",
+              "pnpm --filter @poketcodex/web test:e2e --grep @timeline"
+            ],
+            "pass_criteria": "Streaming timeline remains responsive and ordered under bursty event conditions."
+          },
+          {
+            "name": "composer-stability-suite",
+            "commands": [
+              "pnpm --filter @poketcodex/web test:e2e --grep @composer"
+            ],
+            "pass_criteria": "Composer draft, focus, and send/interrupt controls stay stable during long-running turns."
+          }
+        ],
+        "release_blockers": [
+          "Auto-scroll forces user to bottom while reading history.",
+          "Long responses cause visible input lag or dropped keystrokes."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "UI-T201",
+          "title": "Build typed timeline renderer with expandable cards",
+          "priority": "P0",
+          "estimate_days": 2,
+          "dependencies": [
+            "UI-T103"
+          ],
+          "implementation_steps": [
+            "Render separate card components for message, reasoning, tool, status, and error event classes.",
+            "Support expand/collapse for raw payload details without overwhelming default view.",
+            "Add stable keying and incremental append behavior for streamed timeline updates."
+          ],
+          "deliverables": [
+            "Typed timeline component set.",
+            "Card interaction patterns for compact and expanded detail modes."
+          ],
+          "test_plan": {
+            "unit": [
+              "Renderer selection tests by normalized event type."
+            ],
+            "integration": [
+              "Mixed event stream renders in correct order with expected card variants."
+            ],
+            "manual": [
+              "Expand/collapse payload details during active stream without layout jitter."
+            ]
+          },
+          "acceptance_criteria": [
+            "Timeline defaults to a readable high-signal view while preserving access to full details."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T202",
+          "title": "Harden composer draft, focus retention, and interrupt UX",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "UI-T101"
+          ],
+          "implementation_steps": [
+            "Separate draft input state from stream render state to avoid unintended resets.",
+            "Keep focus and cursor position stable across incoming event batches.",
+            "Add explicit busy timer and interrupt affordance with reliable disabled/enabled states."
+          ],
+          "deliverables": [
+            "Composer state module and refined controls.",
+            "Busy/interrupt interaction patterns with clear status feedback."
+          ],
+          "test_plan": {
+            "unit": [
+              "Composer state machine tests for idle, sending, streaming, interrupted, and error states."
+            ],
+            "integration": [
+              "Rapid send attempts, interrupt action, and reconnect scenarios preserve draft integrity."
+            ]
+          },
+          "acceptance_criteria": [
+            "User can type and control turn execution reliably during high event throughput."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T203",
+          "title": "Implement event batching and smart auto-scroll behavior",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "UI-T201",
+            "UI-T202"
+          ],
+          "implementation_steps": [
+            "Batch render updates on a short cadence to reduce churn under event storms.",
+            "Track user scroll intent and only auto-scroll when user is near latest content.",
+            "Add visible \"jump to latest\" control when user inspects older timeline content."
+          ],
+          "deliverables": [
+            "Batched event queue in frontend state pipeline.",
+            "Auto-scroll override + jump control UX."
+          ],
+          "test_plan": {
+            "unit": [
+              "Batch queue flush and ordering invariants."
+            ],
+            "integration": [
+              "Replay high-frequency streams and confirm smooth scrolling plus no forced snap-to-bottom."
+            ],
+            "manual": [
+              "Scroll upward during active stream and verify user stays in reading position until opting back."
+            ]
+          },
+          "acceptance_criteria": [
+            "Timeline remains performant and user-controlled during long or noisy streams."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "UI-PHASE-3",
+      "name": "Workspace and Thread UX Polish",
+      "goal": "Make project navigation, context switching, and recovery paths intuitive on desktop and mobile.",
+      "estimated_duration_days": 4,
+      "entry_criteria": [
+        "UI-PHASE-2 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "UI-T301",
+          "UI-T302",
+          "UI-T303"
+        ],
+        "required_test_runs": [
+          {
+            "name": "workspace-thread-e2e",
+            "commands": [
+              "pnpm --filter @poketcodex/web test:e2e --grep @workspace"
+            ],
+            "pass_criteria": "Workspace/thread switching, retry flows, and context labels are reliable."
+          },
+          {
+            "name": "mobile-ux-validation",
+            "commands": [
+              "pnpm --filter @poketcodex/web test:e2e:mobile --grep @ui-polish"
+            ],
+            "pass_criteria": "Mobile navigation remains usable with soft keyboard open and active streams."
+          }
+        ],
+        "release_blockers": [
+          "Active workspace/thread context is ambiguous in main chat view.",
+          "Recovery from API errors requires full page refresh or relogin."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "UI-T301",
+          "title": "Upgrade workspace and thread navigation with status-rich cards",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "UI-T102",
+            "UI-T201"
+          ],
+          "implementation_steps": [
+            "Redesign workspace/thread list items to include active, running, archived, and error states.",
+            "Expose last activity metadata and quick context cues in navigation panes.",
+            "Add deterministic active-state styling to prevent context confusion."
+          ],
+          "deliverables": [
+            "Navigation card components with state chips.",
+            "Context metadata mapping from existing backend data."
+          ],
+          "test_plan": {
+            "integration": [
+              "Switch between multiple threads/workspaces and verify active context is always visible."
+            ],
+            "manual": [
+              "Confirm quick re-entry into recent threads without losing current composer draft."
+            ]
+          },
+          "acceptance_criteria": [
+            "Users can identify and switch context confidently without accidental actions."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T302",
+          "title": "Improve turn/action error handling and retry affordances",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "UI-T202",
+            "UI-T301"
+          ],
+          "implementation_steps": [
+            "Standardize inline error states for failed login/session/workspace/thread/turn actions.",
+            "Add one-click retry patterns with safe idempotency guardrails in UI state.",
+            "Provide actionable failure copy that includes next step and affected context."
+          ],
+          "deliverables": [
+            "Unified error boundary and action feedback patterns.",
+            "Retry-capable UI action wrappers for key user flows."
+          ],
+          "test_plan": {
+            "unit": [
+              "Error state reducers and retry action guards."
+            ],
+            "integration": [
+              "Inject backend failures and verify recoverability without hard refresh."
+            ]
+          },
+          "acceptance_criteria": [
+            "Primary user flows recover gracefully from transient failures."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "UI-T303",
+          "title": "Run dedicated mobile polish and usability certification pass",
+          "priority": "P1",
+          "estimate_days": 1,
+          "dependencies": [
+            "UI-T203",
+            "UI-T302"
+          ],
+          "implementation_steps": [
+            "Tune viewport and keyboard behavior for phone widths and long timelines.",
+            "Audit touch target sizes and gesture conflicts for core actions.",
+            "Execute manual UX checklist and record defects with severity tags."
+          ],
+          "deliverables": [
+            "Mobile polish fixes merged.",
+            "UX certification checklist report for UI program closeout."
+          ],
+          "test_plan": {
+            "e2e_mobile": [
+              "Login -> workspace select -> thread start -> turn send -> interrupt -> reconnect flow on narrow viewport."
+            ],
+            "manual": [
+              "Soft keyboard open/close does not hide composer controls or primary action buttons."
+            ]
+          },
+          "acceptance_criteria": [
+            "Core PocketCodex workflows feel reliable and ergonomic on phone screens."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
       "id": "PHASE-2",
       "name": "Multi-Workspace + Approvals",
       "goal": "Support concurrent workspace sessions and robust approval workflows.",
@@ -551,7 +953,7 @@
           "acceptance_criteria": [
             "Workspace sessions are isolated and managed within configured limits."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P2-T202",
@@ -589,7 +991,7 @@
           "acceptance_criteria": [
             "All approval request types are actionable from mobile and correctly correlated."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P2-T203",
@@ -620,7 +1022,7 @@
           "acceptance_criteria": [
             "Thread history is quickly browsable without inconsistency after restart."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P2-T204",
@@ -651,7 +1053,7 @@
           "acceptance_criteria": [
             "Backend recovers from transient failures without uncontrolled restart loops."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P2-T205",
@@ -680,9 +1082,11 @@
           "acceptance_criteria": [
             "Users can reliably navigate multi-workspace flows on mobile without confusion."
           ],
-          "status": "todo"
+          "status": "on_hold"
         }
-      ]
+      ],
+      "status": "on_hold",
+      "status_reason": "Paused on 2026-02-10 for UI-first execution focus."
     },
     {
       "id": "PHASE-3",
@@ -758,7 +1162,7 @@
           "acceptance_criteria": [
             "Terminal sessions persist independently of browser connection."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P3-T302",
@@ -789,7 +1193,7 @@
           "acceptance_criteria": [
             "Terminal WS remains stable under normal and burst output workloads."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P3-T303",
@@ -820,7 +1224,7 @@
           "acceptance_criteria": [
             "Phone-based terminal interaction is practical for daily use."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P3-T304",
@@ -852,7 +1256,7 @@
           "acceptance_criteria": [
             "No unauthorized terminal session access is possible."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P3-T305",
@@ -885,9 +1289,11 @@
           "acceptance_criteria": [
             "No critical leaks or stability regressions found in soak tests."
           ],
-          "status": "todo"
+          "status": "on_hold"
         }
-      ]
+      ],
+      "status": "on_hold",
+      "status_reason": "Paused on 2026-02-10 for UI-first execution focus."
     },
     {
       "id": "PHASE-4",
@@ -964,7 +1370,7 @@
           "acceptance_criteria": [
             "Browser-facing attack surface is reduced with strict headers and origin controls."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P4-T402",
@@ -995,7 +1401,7 @@
           "acceptance_criteria": [
             "Auth surface is resistant to basic brute force and replay patterns."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P4-T403",
@@ -1029,7 +1435,7 @@
           "acceptance_criteria": [
             "Dangerous execution settings cannot be enabled silently or indefinitely."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P4-T404",
@@ -1062,7 +1468,7 @@
           "acceptance_criteria": [
             "Sensitive actions are traceable without exposing secrets."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P4-T405",
@@ -1097,9 +1503,11 @@
           "acceptance_criteria": [
             "No unresolved critical/high security issues remain."
           ],
-          "status": "todo"
+          "status": "on_hold"
         }
-      ]
+      ],
+      "status": "on_hold",
+      "status_reason": "Paused on 2026-02-10 for UI-first execution focus."
     },
     {
       "id": "PHASE-5",
@@ -1178,7 +1586,7 @@
           "acceptance_criteria": [
             "Operational health can be evaluated quickly from dashboards and alerts."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P5-T502",
@@ -1208,7 +1616,7 @@
           "acceptance_criteria": [
             "Data recovery procedure is tested and repeatable."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P5-T503",
@@ -1236,7 +1644,7 @@
           "acceptance_criteria": [
             "Service lifecycle can be managed repeatably with scripts."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P5-T504",
@@ -1265,7 +1673,7 @@
           "acceptance_criteria": [
             "Operational incidents can be handled quickly using documented procedures."
           ],
-          "status": "todo"
+          "status": "on_hold"
         },
         {
           "id": "P5-T505",
@@ -1301,9 +1709,11 @@
           "acceptance_criteria": [
             "Canary shows stable behavior with no P0/P1 issues."
           ],
-          "status": "todo"
+          "status": "on_hold"
         }
-      ]
+      ],
+      "status": "on_hold",
+      "status_reason": "Paused on 2026-02-10 for UI-first execution focus."
     }
   ]
 }
