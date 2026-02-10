@@ -228,7 +228,7 @@ export class AppServerManager extends EventEmitter {
   private spawnProcess(): void {
     const spawnOptions = this.options.spawn ?? {
       command: "codex",
-      args: ["app-server", "--listen", "stdio://"]
+      args: ["app-server"]
     };
 
     const childProcess = spawn(spawnOptions.command, spawnOptions.args ?? [], {

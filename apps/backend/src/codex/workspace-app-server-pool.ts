@@ -41,7 +41,7 @@ export class WorkspaceAppServerPool {
         return new AppServerManager({
           spawn: {
             command: "codex",
-            args: ["app-server", "--listen", "stdio://"],
+            args: ["app-server"],
             cwd: workspace.absolutePath
           }
         });
