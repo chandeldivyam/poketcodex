@@ -19,10 +19,19 @@ export interface ThreadState {
   selectedThreadId: string | null;
 }
 
+export type TimelineEventKind = "user" | "runtime" | "socket" | "system" | "error";
+
+export interface TimelineEventEntry {
+  id: string;
+  timestamp: string;
+  message: string;
+  kind: TimelineEventKind;
+}
+
 export interface StreamState {
   socketState: SocketConnectionState;
   draftPrompt: string;
-  events: string[];
+  events: TimelineEventEntry[];
 }
 
 export interface AppState {

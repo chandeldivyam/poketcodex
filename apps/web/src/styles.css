@@ -380,7 +380,7 @@ form {
   gap: 0.46rem;
 }
 
-.event-stream li {
+.timeline-item {
   font-size: 0.8rem;
   line-height: 1.35;
   color: #23343a;
@@ -388,6 +388,91 @@ form {
   border-radius: var(--radius-sm);
   background: #fbfdfa;
   padding: 0.55rem 0.62rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.timeline-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.timeline-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.12rem 0.48rem;
+  font-weight: 700;
+}
+
+.timeline-time {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.timeline-message {
+  margin: 0;
+  line-break: anywhere;
+}
+
+.timeline-user {
+  border-color: #b8d2eb;
+  background: #eef6ff;
+}
+
+.timeline-runtime {
+  border-color: #c8ded6;
+  background: #f3fbf7;
+}
+
+.timeline-socket {
+  border-color: #d0cfed;
+  background: #f4f4fe;
+}
+
+.timeline-system {
+  border-color: #d6dfd9;
+  background: #f8fbf9;
+}
+
+.timeline-error {
+  border-color: #edc7bf;
+  background: #fff1ed;
+}
+
+.timeline-badge-user {
+  color: #1b4b87;
+  border-color: #a5c5ea;
+  background: #dfecff;
+}
+
+.timeline-badge-runtime {
+  color: #1c6053;
+  border-color: #99cabd;
+  background: #def3ed;
+}
+
+.timeline-badge-socket {
+  color: #403b86;
+  border-color: #b5b2e6;
+  background: #e9e8fb;
+}
+
+.timeline-badge-system {
+  color: #4f5f5a;
+  border-color: #c3d2cb;
+  background: #ebf2ef;
+}
+
+.timeline-badge-error {
+  color: #8a2f1e;
+  border-color: #e2aa9e;
+  background: #ffdcd3;
 }
 
 .empty {

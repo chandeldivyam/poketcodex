@@ -1,4 +1,4 @@
-import type { AppState, AppStateKey } from "../state/app-state.js";
+import type { AppState, AppStateKey, TimelineEventEntry, TimelineEventKind } from "../state/app-state.js";
 import {
   selectActiveWorkspace,
   selectSelectedThreadLabel,
@@ -8,6 +8,15 @@ import {
 import type { AppDomRefs } from "./app-shell.js";
 
 const MAX_RENDERED_EVENTS = 100;
+const TIMELINE_BOTTOM_THRESHOLD_PX = 28;
+
+const TIMELINE_KIND_LABELS: Record<TimelineEventKind, string> = {
+  user: "User",
+  runtime: "Runtime",
+  socket: "Socket",
+  system: "System",
+  error: "Error"
+};
 
 function setHidden(element: HTMLElement, hidden: boolean): void {
   element.classList.toggle("is-hidden", hidden);
@@ -20,13 +29,50 @@ function renderEmptyMessage(message: string): HTMLParagraphElement {
   return paragraph;
 }
 
+function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
+  const lineItem = document.createElement("li");
+  lineItem.className = `timeline-item timeline-${entry.kind}`;
+
+  const row = document.createElement("div");
+  row.className = "timeline-item-row";
+
+  const badge = document.createElement("span");
+  badge.className = `timeline-badge timeline-badge-${entry.kind}`;
+  badge.textContent = TIMELINE_KIND_LABELS[entry.kind];
+
+  const timestamp = document.createElement("time");
+  timestamp.className = "timeline-time";
+  timestamp.textContent = entry.timestamp;
+
+  row.append(badge, timestamp);
+
+  const message = document.createElement("p");
+  message.className = "timeline-message";
+  message.textContent = entry.message;
+
+  lineItem.append(row, message);
+
+  return lineItem;
+}
+
 export class AppRenderer {
   private readonly dom: AppDomRefs;
   private readonly readState: () => Readonly<AppState>;
+  private followTimeline = true;
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
     this.readState = readState;
+
+    this.dom.eventStream.addEventListener("scroll", () => {
+      this.handleTimelineScroll();
+    });
+
+    this.dom.jumpLatestButton.addEventListener("click", () => {
+      this.followTimeline = true;
+      this.scrollToLatest();
+      this.updateJumpLatestVisibility();
+    });
   }
 
   renderAll(): void {
@@ -199,18 +245,51 @@ export class AppRenderer {
 
     if (events.length === 0) {
       const placeholder = document.createElement("li");
+      placeholder.className = "timeline-item timeline-system";
       placeholder.textContent = "Awaiting events...";
       this.dom.eventList.replaceChildren(placeholder);
+      this.followTimeline = true;
+      this.updateJumpLatestVisibility();
       return;
     }
 
     const fragment = document.createDocumentFragment();
-    for (const eventLine of events) {
-      const lineItem = document.createElement("li");
-      lineItem.textContent = eventLine;
-      fragment.append(lineItem);
+    for (const eventEntry of events) {
+      fragment.append(createTimelineItem(eventEntry));
     }
 
     this.dom.eventList.replaceChildren(fragment);
+
+    if (this.followTimeline) {
+      this.scrollToLatest();
+    }
+
+    this.updateJumpLatestVisibility();
+  }
+
+  private isNearTimelineBottom(): boolean {
+    const { scrollHeight, scrollTop, clientHeight } = this.dom.eventStream;
+    return scrollHeight - (scrollTop + clientHeight) <= TIMELINE_BOTTOM_THRESHOLD_PX;
+  }
+
+  private handleTimelineScroll(): void {
+    this.followTimeline = this.isNearTimelineBottom();
+    this.updateJumpLatestVisibility();
+  }
+
+  private updateJumpLatestVisibility(): void {
+    const hasEvents = this.readState().stream.events.length > 0;
+    setHidden(this.dom.jumpLatestButton, !hasEvents || this.followTimeline);
+  }
+
+  private scrollToLatest(): void {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        this.dom.eventStream.scrollTop = this.dom.eventStream.scrollHeight;
+      });
+      return;
+    }
+
+    this.dom.eventStream.scrollTop = this.dom.eventStream.scrollHeight;
   }
 }

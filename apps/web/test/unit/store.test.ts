@@ -77,10 +77,24 @@ describe("AppStore", () => {
 
     store.updateSlice("stream", (stream) => ({
       ...stream,
-      events: ["event-1"]
+      events: [
+        {
+          id: "event-1",
+          timestamp: "10:00:00 AM",
+          message: "event-1",
+          kind: "system"
+        }
+      ]
     }));
 
-    expect(store.getState().stream.events).toEqual(["event-1"]);
+    expect(store.getState().stream.events).toEqual([
+      {
+        id: "event-1",
+        timestamp: "10:00:00 AM",
+        message: "event-1",
+        kind: "system"
+      }
+    ]);
     expect(store.getState().stream).not.toBe(before);
   });
 });

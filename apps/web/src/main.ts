@@ -6,7 +6,7 @@ import {
   type ThreadListItem
 } from "./lib/normalize.js";
 import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
-import type { AppState, AppStateKey } from "./state/app-state.js";
+import type { AppState, AppStateKey, TimelineEventKind } from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
 import { AppStore } from "./state/store.js";
 import { AppRenderer } from "./ui/app-renderer.js";
@@ -75,6 +75,7 @@ const renderer = new AppRenderer(dom, () => store.getState());
 let workspaceSocket: ReconnectingWorkspaceSocket | undefined;
 let workspaceSocketWorkspaceId: string | null = null;
 let renderScheduled = false;
+let eventSequence = 0;
 const pendingChangedSlices = new Set<AppStateKey>();
 
 store.subscribe((_state, changedSlices) => {
@@ -146,10 +147,19 @@ function activeWorkspace(): WorkspaceRecord | null {
   return selectActiveWorkspace(store.getState());
 }
 
-function appendEvent(line: string): void {
+function appendEvent(message: string, kind: TimelineEventKind = "system"): void {
   store.updateSlice("stream", (stream) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const nextEvents = [...stream.events, `${timestamp} ${line}`];
+    const nextEvents = [
+      ...stream.events,
+      {
+        id: `event-${eventSequence}`,
+        timestamp: new Date().toLocaleTimeString(),
+        message,
+        kind
+      }
+    ];
+
+    eventSequence += 1;
 
     if (nextEvents.length > MAX_STORED_EVENTS) {
       nextEvents.splice(0, nextEvents.length - MAX_STORED_EVENTS);
@@ -164,16 +174,37 @@ function appendEvent(line: string): void {
 
 function handleApiError(error: unknown): void {
   if (error instanceof ApiClientError) {
-    setError(`${error.statusCode}: ${error.message}`);
+    const message = `${error.statusCode}: ${error.message}`;
+    setError(message);
+    appendEvent(message, "error");
     return;
   }
 
   if (error instanceof Error) {
     setError(error.message);
+    appendEvent(error.message, "error");
     return;
   }
 
-  setError("An unknown error occurred");
+  const message = "An unknown error occurred";
+  setError(message);
+  appendEvent(message, "error");
+}
+
+function classifyWorkspaceEvent(formattedEvent: string): TimelineEventKind {
+  if (formattedEvent.startsWith("[socket]")) {
+    return "socket";
+  }
+
+  if (formattedEvent.includes("runtime-stderr")) {
+    return "error";
+  }
+
+  if (formattedEvent.startsWith("#")) {
+    return "runtime";
+  }
+
+  return "system";
 }
 
 function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | null {
@@ -265,7 +296,7 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
         return;
       }
 
-      appendEvent(formattedEvent);
+      appendEvent(formattedEvent, classifyWorkspaceEvent(formattedEvent));
     }
   });
 
@@ -334,6 +365,7 @@ async function handleLoginSubmit(event: Event): Promise<void> {
       draftPrompt: "",
       events: []
     });
+    eventSequence = 0;
 
     if (loginResponse.authenticated) {
       await loadWorkspaces();
@@ -385,6 +417,7 @@ async function handleLogout(): Promise<void> {
       events: []
     }
   });
+  eventSequence = 0;
 }
 
 async function handleWorkspaceCreate(event: Event): Promise<void> {
@@ -413,7 +446,7 @@ async function handleWorkspaceCreate(event: Event): Promise<void> {
 
     setSelectedWorkspaceId(response.workspace.workspaceId);
     setSelectedThreadId(null);
-    appendEvent(`Workspace created: ${response.workspace.displayName}`);
+    appendEvent(`Workspace created: ${response.workspace.displayName}`, "system");
 
     await loadWorkspaces();
     dom.workspaceForm.reset();
@@ -440,7 +473,7 @@ async function handleStartThread(): Promise<void> {
 
     if (threadId) {
       setSelectedThreadId(threadId);
-      appendEvent(`Thread started: ${threadId}`);
+      appendEvent(`Thread started: ${threadId}`, "system");
     }
 
     await loadThreads(workspace.workspaceId);
@@ -473,7 +506,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
 
   clearError();
   setBusy(true);
-  appendEvent(`Prompt: ${normalizedPrompt}`);
+  appendEvent(`Prompt: ${normalizedPrompt}`, "user");
 
   try {
     const csrfToken = requireCsrfToken();
@@ -493,7 +526,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
       setSelectedThreadId(threadId);
     }
 
-    appendEvent("Turn started");
+    appendEvent("Turn started", "runtime");
     dom.turnForm.reset();
 
     store.patchSlice("stream", {
@@ -526,7 +559,7 @@ async function handleInterruptTurn(): Promise<void> {
     }
 
     await apiClient.interruptTurn(workspace.workspaceId, csrfToken, payload);
-    appendEvent("Interrupt signal sent");
+    appendEvent("Interrupt signal sent", "system");
   } catch (error: unknown) {
     handleApiError(error);
   } finally {
@@ -540,7 +573,7 @@ function handleReconnectEvents(): void {
     return;
   }
 
-  appendEvent("Manual reconnect requested");
+  appendEvent("Manual reconnect requested", "socket");
   connectWorkspaceEvents(workspace.workspaceId, true);
 }
 
@@ -560,6 +593,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
   store.patchSlice("stream", {
     events: []
   });
+  eventSequence = 0;
 
   void loadThreads(workspaceId)
     .then(() => {
@@ -572,7 +606,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
 
 function handleThreadSelection(threadId: string): void {
   setSelectedThreadId(threadId);
-  appendEvent(`Selected thread: ${threadId}`);
+  appendEvent(`Selected thread: ${threadId}`, "system");
 }
 
 function attachHandlers(): void {
