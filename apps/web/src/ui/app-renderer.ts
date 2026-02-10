@@ -1,4 +1,10 @@
-import type { AppState, AppStateKey, TimelineEventCategory, TimelineEventEntry } from "../state/app-state.js";
+import type {
+  AppState,
+  AppStateKey,
+  TimelineEventCategory,
+  TimelineEventEntry,
+  TurnExecutionPhase
+} from "../state/app-state.js";
 import {
   selectActiveWorkspace,
   selectSelectedThreadLabel,
@@ -9,6 +15,7 @@ import type { AppDomRefs } from "./app-shell.js";
 
 const MAX_RENDERED_EVENTS = 100;
 const TIMELINE_BOTTOM_THRESHOLD_PX = 28;
+const TURN_STATUS_TICK_MS = 1_000;
 
 const TIMELINE_CATEGORY_LABELS: Record<TimelineEventCategory, string> = {
   input: "Input",
@@ -19,6 +26,68 @@ const TIMELINE_CATEGORY_LABELS: Record<TimelineEventCategory, string> = {
   system: "System",
   error: "Error"
 };
+
+interface TurnStatusPresentation {
+  label: string;
+  description: string;
+  className: string;
+}
+
+function formatElapsed(startedAtMs: number): string {
+  const elapsedMs = Math.max(0, Date.now() - startedAtMs);
+  const elapsedSeconds = Math.floor(elapsedMs / 1_000);
+
+  if (elapsedSeconds < 60) {
+    return `${elapsedSeconds}s`;
+  }
+
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function getTurnStatusPresentation(phase: TurnExecutionPhase, startedAtMs: number | null): TurnStatusPresentation {
+  if (phase === "submitting") {
+    const suffix = startedAtMs !== null ? ` (${formatElapsed(startedAtMs)})` : "";
+    return {
+      label: "Submitting",
+      description: `Sending prompt${suffix}`,
+      className: "phase-submitting"
+    };
+  }
+
+  if (phase === "running") {
+    const suffix = startedAtMs !== null ? formatElapsed(startedAtMs) : "0s";
+    return {
+      label: "Running",
+      description: `Streaming response for ${suffix}`,
+      className: "phase-running"
+    };
+  }
+
+  if (phase === "interrupting") {
+    const suffix = startedAtMs !== null ? ` (${formatElapsed(startedAtMs)})` : "";
+    return {
+      label: "Interrupting",
+      description: `Waiting for runtime to stop${suffix}`,
+      className: "phase-interrupting"
+    };
+  }
+
+  if (phase === "error") {
+    return {
+      label: "Error",
+      description: "Last turn failed. Adjust prompt or retry.",
+      className: "phase-error"
+    };
+  }
+
+  return {
+    label: "Idle",
+    description: "Ready to send",
+    className: "phase-idle"
+  };
+}
 
 function setHidden(element: HTMLElement, hidden: boolean): void {
   element.classList.toggle("is-hidden", hidden);
@@ -87,6 +156,7 @@ export class AppRenderer {
   private readonly dom: AppDomRefs;
   private readonly readState: () => Readonly<AppState>;
   private followTimeline = true;
+  private turnStatusTimer: number | undefined;
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
@@ -135,6 +205,7 @@ export class AppRenderer {
 
     if (changedSlices.has("stream")) {
       this.renderDraftPrompt();
+      this.renderTurnStatus();
       this.renderEvents();
     }
   }
@@ -172,6 +243,11 @@ export class AppRenderer {
     const state = this.readState();
     const workspaceActionsDisabled = selectWorkspaceActionsDisabled(state);
     const threadActionsDisabled = selectThreadActionsDisabled(state);
+    const turnContextMissing = !state.session.authenticated || !state.workspace.selectedWorkspaceId;
+    const turnExecutionActive =
+      state.stream.turnPhase === "submitting" ||
+      state.stream.turnPhase === "running" ||
+      state.stream.turnPhase === "interrupting";
 
     this.dom.refreshWorkspacesButton.disabled = workspaceActionsDisabled;
     this.dom.logoutButton.disabled = workspaceActionsDisabled;
@@ -182,8 +258,12 @@ export class AppRenderer {
     this.dom.reconnectEventsButton.disabled = threadActionsDisabled;
     this.dom.refreshThreadsButton.disabled = threadActionsDisabled;
     this.dom.startThreadButton.disabled = threadActionsDisabled;
-    this.dom.startTurnButton.disabled = threadActionsDisabled;
-    this.dom.interruptTurnButton.disabled = threadActionsDisabled;
+    this.dom.startTurnButton.disabled = threadActionsDisabled || turnExecutionActive;
+    this.dom.interruptTurnButton.disabled =
+      threadActionsDisabled ||
+      turnContextMissing ||
+      !turnExecutionActive ||
+      state.stream.turnPhase === "interrupting";
   }
 
   private renderWorkspaceList(): void {
@@ -264,6 +344,33 @@ export class AppRenderer {
     const state = this.readState();
     if (this.dom.turnPromptInput.value !== state.stream.draftPrompt) {
       this.dom.turnPromptInput.value = state.stream.draftPrompt;
+    }
+  }
+
+  private renderTurnStatus(): void {
+    const state = this.readState();
+    const presentation = getTurnStatusPresentation(state.stream.turnPhase, state.stream.turnStartedAtMs);
+
+    this.dom.turnStatusChip.textContent = presentation.label;
+    this.dom.turnStatusChip.className = `turn-status-chip ${presentation.className}`;
+    this.dom.turnStatusText.textContent = presentation.description;
+
+    this.syncTurnStatusTimer(state.stream.turnPhase);
+  }
+
+  private syncTurnStatusTimer(phase: TurnExecutionPhase): void {
+    const shouldTick = phase === "submitting" || phase === "running" || phase === "interrupting";
+
+    if (shouldTick && this.turnStatusTimer === undefined) {
+      this.turnStatusTimer = window.setInterval(() => {
+        this.renderTurnStatus();
+      }, TURN_STATUS_TICK_MS);
+      return;
+    }
+
+    if (!shouldTick && this.turnStatusTimer !== undefined) {
+      window.clearInterval(this.turnStatusTimer);
+      this.turnStatusTimer = undefined;
     }
   }
 

@@ -4,7 +4,8 @@ import {
   normalizeWorkspaceTimelineEvent,
   normalizeThreadList,
   type ThreadListItem,
-  type WorkspaceTimelineCategory
+  type WorkspaceTimelineCategory,
+  type WorkspaceTurnSignal
 } from "./lib/normalize.js";
 import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
 import type {
@@ -12,7 +13,8 @@ import type {
   AppStateKey,
   TimelineEventCategory,
   TimelineEventEntry,
-  TimelineEventKind
+  TimelineEventKind,
+  TurnExecutionPhase
 } from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
 import { AppStore } from "./state/store.js";
@@ -95,7 +97,9 @@ const initialState: AppState = {
     socketState: "disconnected",
     draftPrompt: "",
     events: [],
-    showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false)
+    showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
+    turnPhase: "idle",
+    turnStartedAtMs: null
   }
 };
 
@@ -186,6 +190,69 @@ function setShowInternalEvents(showInternalEvents: boolean): void {
   writeStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, showInternalEvents);
   store.patchSlice("stream", {
     showInternalEvents
+  });
+}
+
+function setTurnExecutionPhase(
+  turnPhase: TurnExecutionPhase,
+  options: {
+    preserveStartedAt?: boolean;
+    explicitStartedAtMs?: number | null;
+  } = {}
+): void {
+  store.updateSlice("stream", (stream) => {
+    const nextStartedAtMs =
+      options.explicitStartedAtMs !== undefined
+        ? options.explicitStartedAtMs
+        : options.preserveStartedAt
+          ? stream.turnStartedAtMs
+          : null;
+
+    if (stream.turnPhase === turnPhase && stream.turnStartedAtMs === nextStartedAtMs) {
+      return stream;
+    }
+
+    return {
+      ...stream,
+      turnPhase,
+      turnStartedAtMs: nextStartedAtMs
+    };
+  });
+}
+
+function applyTurnSignal(turnSignal: WorkspaceTurnSignal | undefined): void {
+  if (!turnSignal) {
+    return;
+  }
+
+  store.updateSlice("stream", (stream) => {
+    let nextPhase = stream.turnPhase;
+    let nextStartedAtMs = stream.turnStartedAtMs;
+
+    if (turnSignal === "running") {
+      if (stream.turnPhase !== "interrupting") {
+        nextPhase = "running";
+      }
+      if (nextStartedAtMs === null) {
+        nextStartedAtMs = Date.now();
+      }
+    } else if (turnSignal === "completed" || turnSignal === "interrupted") {
+      nextPhase = "idle";
+      nextStartedAtMs = null;
+    } else if (turnSignal === "failed") {
+      nextPhase = "error";
+      nextStartedAtMs = null;
+    }
+
+    if (nextPhase === stream.turnPhase && nextStartedAtMs === stream.turnStartedAtMs) {
+      return stream;
+    }
+
+    return {
+      ...stream,
+      turnPhase: nextPhase,
+      turnStartedAtMs: nextStartedAtMs
+    };
   });
 }
 
@@ -397,6 +464,7 @@ async function loadWorkspaces(): Promise<void> {
     selectedThreadId: null
   });
   setSelectedThreadId(null);
+  setTurnExecutionPhase("idle");
   disconnectWorkspaceEvents();
 }
 
@@ -439,6 +507,8 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
       if (!normalizedEvent) {
         return;
       }
+
+      applyTurnSignal(normalizedEvent.turnSignal);
 
       enqueueRuntimeEvent(workspaceId, normalizedEvent.message, normalizedEvent.kind, {
         category: mapCategory(normalizedEvent.category),
@@ -513,7 +583,9 @@ async function handleLoginSubmit(event: Event): Promise<void> {
 
     store.patchSlice("stream", {
       draftPrompt: "",
-      events: []
+      events: [],
+      turnPhase: "idle",
+      turnStartedAtMs: null
     });
     clearRuntimeEventQueue();
     eventSequence = 0;
@@ -567,7 +639,9 @@ async function handleLogout(): Promise<void> {
       socketState: "disconnected",
       draftPrompt: "",
       events: [],
-      showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false)
+      showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
+      turnPhase: "idle",
+      turnStartedAtMs: null
     }
   });
   eventSequence = 0;
@@ -653,11 +727,20 @@ async function handleTurnSubmit(event: Event): Promise<void> {
   }
 
   const normalizedPrompt = prompt.trim();
+  const existingTurnPhase = store.getState().stream.turnPhase;
+  if (existingTurnPhase === "submitting" || existingTurnPhase === "running" || existingTurnPhase === "interrupting") {
+    setError("A turn is already active. Interrupt or wait for completion.");
+    return;
+  }
+
   store.patchSlice("stream", {
     draftPrompt: normalizedPrompt
   });
 
   clearError();
+  setTurnExecutionPhase("submitting", {
+    explicitStartedAtMs: Date.now()
+  });
   setBusy(true);
   appendEvent(`Prompt: ${normalizedPrompt}`, "user");
 
@@ -679,6 +762,12 @@ async function handleTurnSubmit(event: Event): Promise<void> {
       setSelectedThreadId(threadId);
     }
 
+    const phaseAfterStartRequest = store.getState().stream.turnPhase;
+    if (phaseAfterStartRequest === "submitting" || phaseAfterStartRequest === "running") {
+      setTurnExecutionPhase("running", {
+        explicitStartedAtMs: store.getState().stream.turnStartedAtMs ?? Date.now()
+      });
+    }
     appendEvent("Turn started", "runtime");
     dom.turnForm.reset();
 
@@ -688,6 +777,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
 
     await loadThreads(workspace.workspaceId);
   } catch (error: unknown) {
+    setTurnExecutionPhase("error");
     handleApiError(error);
   } finally {
     setBusy(false);
@@ -700,7 +790,17 @@ async function handleInterruptTurn(): Promise<void> {
     return;
   }
 
+  const turnPhase = store.getState().stream.turnPhase;
+  if (turnPhase !== "submitting" && turnPhase !== "running" && turnPhase !== "interrupting") {
+    appendEvent("No active turn to interrupt", "system");
+    return;
+  }
+
   clearError();
+  setTurnExecutionPhase("interrupting", {
+    preserveStartedAt: true,
+    explicitStartedAtMs: store.getState().stream.turnStartedAtMs ?? Date.now()
+  });
   setBusy(true);
 
   try {
@@ -714,6 +814,7 @@ async function handleInterruptTurn(): Promise<void> {
     await apiClient.interruptTurn(workspace.workspaceId, csrfToken, payload);
     appendEvent("Interrupt signal sent", "system");
   } catch (error: unknown) {
+    setTurnExecutionPhase("error");
     handleApiError(error);
   } finally {
     setBusy(false);
@@ -745,7 +846,9 @@ function handleWorkspaceSelection(workspaceId: string): void {
   clearError();
   clearRuntimeEventQueue();
   store.patchSlice("stream", {
-    events: []
+    events: [],
+    turnPhase: "idle",
+    turnStartedAtMs: null
   });
   eventSequence = 0;
 

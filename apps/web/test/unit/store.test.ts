@@ -23,7 +23,9 @@ function createInitialState(): AppState {
       socketState: "disconnected",
       draftPrompt: "",
       events: [],
-      showInternalEvents: false
+      showInternalEvents: false,
+      turnPhase: "idle",
+      turnStartedAtMs: null
     }
   };
 }

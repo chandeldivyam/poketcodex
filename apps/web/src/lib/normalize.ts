@@ -11,6 +11,7 @@ export interface FormatWorkspaceEventOptions {
 }
 
 export type WorkspaceTimelineCategory = "message" | "reasoning" | "tool" | "status" | "system" | "error";
+export type WorkspaceTurnSignal = "running" | "completed" | "interrupted" | "failed";
 
 export interface NormalizedWorkspaceTimelineEvent {
   message: string;
@@ -18,6 +19,7 @@ export interface NormalizedWorkspaceTimelineEvent {
   category: WorkspaceTimelineCategory;
   isInternal: boolean;
   details?: string;
+  turnSignal?: WorkspaceTurnSignal;
 }
 
 interface RuntimeEventShape {
@@ -92,17 +94,29 @@ function stringifyDetails(value: unknown, maxLength = 1200): string | undefined 
   }
 }
 
-function withOptionalDetails<TBase extends Omit<NormalizedWorkspaceTimelineEvent, "details">>(
-  baseEvent: TBase,
-  details: string | undefined
-): NormalizedWorkspaceTimelineEvent {
-  if (details === undefined) {
-    return baseEvent as NormalizedWorkspaceTimelineEvent;
-  }
+interface OptionalEventFields {
+  details?: string;
+  turnSignal?: WorkspaceTurnSignal;
+}
 
+function withOptionalFields<TBase extends Omit<NormalizedWorkspaceTimelineEvent, "details" | "turnSignal">>(
+  baseEvent: TBase,
+  optionalFields: OptionalEventFields
+): NormalizedWorkspaceTimelineEvent {
   return {
     ...baseEvent,
-    details
+    ...(optionalFields.details !== undefined ? { details: optionalFields.details } : {}),
+    ...(optionalFields.turnSignal !== undefined ? { turnSignal: optionalFields.turnSignal } : {})
+  };
+}
+
+function buildOptionalEventFields(
+  details: string | undefined,
+  turnSignal?: WorkspaceTurnSignal
+): OptionalEventFields {
+  return {
+    ...(details !== undefined ? { details } : {}),
+    ...(turnSignal !== undefined ? { turnSignal } : {})
   };
 }
 
@@ -221,6 +235,64 @@ function classifyMethodCategory(method: string, params: unknown): WorkspaceTimel
   }
 
   return "status";
+}
+
+function turnSignalFromStatus(params: unknown): WorkspaceTurnSignal | undefined {
+  if (!params || typeof params !== "object") {
+    return undefined;
+  }
+
+  const payload = params as Record<string, unknown>;
+  const statusValue = payload.status;
+  if (typeof statusValue !== "string") {
+    return undefined;
+  }
+
+  const normalized = statusValue.toLowerCase();
+
+  if (normalized.includes("interrupt") || normalized.includes("cancel") || normalized.includes("abort")) {
+    return "interrupted";
+  }
+
+  if (normalized.includes("fail") || normalized.includes("error") || normalized.includes("reject")) {
+    return "failed";
+  }
+
+  if (normalized.includes("complete") || normalized.includes("success") || normalized.includes("done")) {
+    return "completed";
+  }
+
+  if (normalized.includes("run") || normalized.includes("progress") || normalized.includes("stream") || normalized.includes("start")) {
+    return "running";
+  }
+
+  return undefined;
+}
+
+function turnSignalFromMethod(method: string): WorkspaceTurnSignal | undefined {
+  const normalized = method.toLowerCase();
+
+  if (normalized.includes("turn/interrupted") || normalized.includes("turn/cancelled") || normalized.includes("turn/aborted")) {
+    return "interrupted";
+  }
+
+  if (normalized.includes("turn/failed") || normalized.includes("turn/error")) {
+    return "failed";
+  }
+
+  if (normalized.includes("turn/completed") || normalized.includes("turn/done")) {
+    return "completed";
+  }
+
+  if (normalized.includes("turn/start") || normalized.includes("turn/started") || normalized.includes("turn/created")) {
+    return "running";
+  }
+
+  return undefined;
+}
+
+function detectTurnSignal(method: string, params: unknown): WorkspaceTurnSignal | undefined {
+  return turnSignalFromStatus(params) ?? turnSignalFromMethod(method);
 }
 
 function formatSequencePrefix(sequence: number | null): string {
@@ -355,26 +427,26 @@ export function normalizeWorkspaceTimelineEvent(
   }
 
   if (baseEnvelope.type === "parse_error") {
-    return withOptionalDetails(
+    return withOptionalFields(
       {
         message,
         kind: "error",
         category: "error",
         isInternal: true
       },
-      stringifyDetails(baseEnvelope.raw)
+      buildOptionalEventFields(stringifyDetails(baseEnvelope.raw))
     );
   }
 
   if (baseEnvelope.type !== "workspace_runtime_event") {
-    return withOptionalDetails(
+    return withOptionalFields(
       {
         message,
         kind: "system",
         category: "system",
         isInternal: false
       },
-      stringifyDetails(eventPayload)
+      buildOptionalEventFields(stringifyDetails(eventPayload))
     );
   }
 
@@ -382,53 +454,57 @@ export function normalizeWorkspaceTimelineEvent(
 
   if (runtime.method) {
     const category = classifyMethodCategory(runtime.method, runtime.params);
+    const turnSignal = detectTurnSignal(runtime.method, runtime.params);
 
-    return withOptionalDetails(
+    return withOptionalFields(
       {
         message,
         kind: category === "error" ? "error" : "runtime",
         category,
         isInternal: isInternalMethod(runtime.method)
       },
-      stringifyDetails({
-        sequence: runtime.sequence,
-        method: runtime.method,
-        params: runtime.params
-      })
+      buildOptionalEventFields(
+        stringifyDetails({
+          sequence: runtime.sequence,
+          method: runtime.method,
+          params: runtime.params
+        }),
+        turnSignal
+      )
     );
   }
 
   if (runtime.kind === "stderr") {
-    return withOptionalDetails(
+    return withOptionalFields(
       {
         message,
         kind: "error",
         category: "error",
         isInternal: false
       },
-      stringifyDetails(runtime.payload)
+      buildOptionalEventFields(stringifyDetails(runtime.payload))
     );
   }
 
   if (runtime.kind === "stateChanged") {
-    return withOptionalDetails(
+    return withOptionalFields(
       {
         message,
         kind: "runtime",
         category: "status",
         isInternal: false
       },
-      stringifyDetails(runtime.payload)
+      buildOptionalEventFields(stringifyDetails(runtime.payload))
     );
   }
 
-  return withOptionalDetails(
+  return withOptionalFields(
     {
       message,
       kind: "runtime",
       category: "status",
       isInternal: false
     },
-    stringifyDetails(runtime.payload)
+    buildOptionalEventFields(stringifyDetails(runtime.payload))
   );
 }

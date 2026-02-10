@@ -201,7 +201,8 @@ describe("normalizeWorkspaceTimelineEvent", () => {
       message: "#14 tool/call status=running",
       kind: "runtime",
       category: "tool",
-      isInternal: false
+      isInternal: false,
+      turnSignal: "running"
     });
     expect(normalized?.details).toContain('"method": "tool/call"');
   });
@@ -247,6 +248,45 @@ describe("normalizeWorkspaceTimelineEvent", () => {
       kind: "runtime",
       category: "status",
       isInternal: true
+    });
+  });
+
+  it("detects completed and failed turn lifecycle signals", () => {
+    expect(
+      normalizeWorkspaceTimelineEvent({
+        type: "workspace_runtime_event",
+        event: {
+          sequence: 40,
+          kind: "notification",
+          payload: {
+            method: "turn/completed",
+            params: {
+              status: "completed"
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      turnSignal: "completed"
+    });
+
+    expect(
+      normalizeWorkspaceTimelineEvent({
+        type: "workspace_runtime_event",
+        event: {
+          sequence: 41,
+          kind: "notification",
+          payload: {
+            method: "turn/status",
+            params: {
+              status: "failed"
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      turnSignal: "failed",
+      kind: "error"
     });
   });
 });

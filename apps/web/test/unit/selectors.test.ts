@@ -44,7 +44,9 @@ function createState(): AppState {
       socketState: "connected",
       draftPrompt: "",
       events: [],
-      showInternalEvents: false
+      showInternalEvents: false,
+      turnPhase: "idle",
+      turnStartedAtMs: null
     }
   };
 }

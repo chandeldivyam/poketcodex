@@ -21,6 +21,7 @@ export interface ThreadState {
 
 export type TimelineEventKind = "user" | "runtime" | "socket" | "system" | "error";
 export type TimelineEventCategory = "input" | "message" | "reasoning" | "tool" | "status" | "system" | "error";
+export type TurnExecutionPhase = "idle" | "submitting" | "running" | "interrupting" | "error";
 
 export interface TimelineEventEntry {
   id: string;
@@ -37,6 +38,8 @@ export interface StreamState {
   draftPrompt: string;
   events: TimelineEventEntry[];
   showInternalEvents: boolean;
+  turnPhase: TurnExecutionPhase;
+  turnStartedAtMs: number | null;
 }
 
 export interface AppState {

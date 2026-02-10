@@ -22,6 +22,8 @@ export interface AppDomRefs {
   selectedThreadLabel: HTMLElement;
   turnForm: HTMLFormElement;
   turnPromptInput: HTMLTextAreaElement;
+  turnStatusChip: HTMLElement;
+  turnStatusText: HTMLElement;
   startTurnButton: HTMLButtonElement;
   interruptTurnButton: HTMLButtonElement;
   eventStream: HTMLElement;
@@ -113,6 +115,10 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
               Prompt
               <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required data-role="turn-prompt"></textarea>
             </label>
+            <div class="turn-status" data-role="turn-status">
+              <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
+              <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
+            </div>
             <div class="turn-actions">
               <button type="submit" data-role="start-turn">Start Turn</button>
               <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
@@ -161,6 +167,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     selectedThreadLabel: requireElement<HTMLElement>(root, "[data-role='selected-thread']"),
     turnForm: requireElement<HTMLFormElement>(root, "#turn-form"),
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
+    turnStatusChip: requireElement<HTMLElement>(root, "[data-role='turn-status-chip']"),
+    turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
     startTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='start-turn']"),
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
     eventStream: requireElement<HTMLElement>(root, "[data-role='event-stream']"),

@@ -348,6 +348,62 @@ form {
   grid-template-columns: 1fr;
 }
 
+.turn-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.turn-status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #c7d6cf;
+  background: #edf5f1;
+  color: #2b4f47;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 0.18rem 0.6rem;
+}
+
+.turn-status-chip.phase-idle {
+  border-color: #c7d6cf;
+  background: #edf5f1;
+  color: #2b4f47;
+}
+
+.turn-status-chip.phase-submitting {
+  border-color: #d6c08a;
+  background: #fff5df;
+  color: #724e13;
+}
+
+.turn-status-chip.phase-running {
+  border-color: #93cabd;
+  background: #dcf2ec;
+  color: #1f6457;
+}
+
+.turn-status-chip.phase-interrupting {
+  border-color: #c2b4e6;
+  background: #eee9ff;
+  color: #4c4480;
+}
+
+.turn-status-chip.phase-error {
+  border-color: #e4b2a6;
+  background: #ffe4de;
+  color: #8b2f20;
+}
+
+.turn-status-text {
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
 .event-toolbar {
   display: flex;
   justify-content: space-between;
