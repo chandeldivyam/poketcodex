@@ -23,3 +23,11 @@ Phase-0 monorepo scaffold for PocketCodex.
 - `pnpm test`
 - `pnpm build`
 - `pnpm dev`
+
+## Environment
+
+The backend validates configuration at startup and exits on invalid values.
+
+1. Copy `.env.example` to `.env`.
+2. Set strong values for `SESSION_SECRET` and `CSRF_SECRET` (32+ chars).
+3. Set `ALLOWED_WORKSPACE_ROOTS` to absolute paths only.

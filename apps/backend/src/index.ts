@@ -1,29 +1,26 @@
-import { buildApp } from "./app.js";
+import { ConfigValidationError } from "./config.js";
+import { startServer } from "./server.js";
 
-const host = process.env.HOST ?? "127.0.0.1";
-const rawPort = process.env.PORT ?? "8787";
-const port = Number.parseInt(rawPort, 10);
+async function main(): Promise<void> {
+  const runningServer = await startServer();
 
-if (Number.isNaN(port)) {
-  throw new Error(`Invalid PORT value: ${rawPort}`);
+  const shutdown = async (): Promise<void> => {
+    await runningServer.close();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
-const app = buildApp();
+main().catch((error: unknown) => {
+  if (error instanceof ConfigValidationError) {
+    console.error(error.message);
+  } else if (error instanceof Error) {
+    console.error(`Startup failed: ${error.message}`);
+  } else {
+    console.error("Startup failed with an unknown error");
+  }
 
-const shutdown = async (): Promise<void> => {
-  await app.close();
-  process.exit(0);
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-
-app
-  .listen({ host, port })
-  .then(() => {
-    app.log.info({ host, port }, "backend started");
-  })
-  .catch((error: unknown) => {
-    app.log.error(error, "failed to start backend");
-    process.exit(1);
-  });
+  process.exit(1);
+});
