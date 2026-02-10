@@ -885,6 +885,29 @@ function attachHandlers(): void {
     });
   });
 
+  dom.turnPromptInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey) {
+      event.preventDefault();
+
+      if (dom.startTurnButton.disabled) {
+        return;
+      }
+
+      dom.turnForm.requestSubmit();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+
+      if (dom.interruptTurnButton.disabled) {
+        return;
+      }
+
+      void handleInterruptTurn();
+    }
+  });
+
   dom.workspaceList.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
     const button = target.closest<HTMLButtonElement>("button[data-workspace-id]");

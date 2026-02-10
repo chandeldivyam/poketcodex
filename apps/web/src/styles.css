@@ -404,6 +404,12 @@ form {
   color: var(--ink-muted);
 }
 
+.turn-shortcuts {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
 .event-toolbar {
   display: flex;
   justify-content: space-between;

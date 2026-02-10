@@ -119,6 +119,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
               <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
               <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
             </div>
+            <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
             <div class="turn-actions">
               <button type="submit" data-role="start-turn">Start Turn</button>
               <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
