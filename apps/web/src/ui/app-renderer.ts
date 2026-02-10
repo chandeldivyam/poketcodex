@@ -1,8 +1,10 @@
 import type {
   AppState,
   AppStateKey,
+  ThreadTranscriptState,
   TimelineEventCategory,
   TimelineEventEntry,
+  TranscriptItem,
   TurnExecutionPhase
 } from "../state/app-state.js";
 import {
@@ -15,6 +17,7 @@ import type { AppDomRefs } from "./app-shell.js";
 
 const MAX_RENDERED_EVENTS = 100;
 const TIMELINE_BOTTOM_THRESHOLD_PX = 28;
+const TRANSCRIPT_BOTTOM_THRESHOLD_PX = 32;
 const TURN_STATUS_TICK_MS = 1_000;
 
 const TIMELINE_CATEGORY_LABELS: Record<TimelineEventCategory, string> = {
@@ -305,11 +308,16 @@ export class AppRenderer {
   private readonly dom: AppDomRefs;
   private readonly readState: () => Readonly<AppState>;
   private followTimeline = true;
+  private followTranscript = true;
   private turnStatusTimer: number | undefined;
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
     this.readState = readState;
+
+    this.dom.transcriptStream.addEventListener("scroll", () => {
+      this.followTranscript = this.isNearTranscriptBottom();
+    });
 
     this.dom.eventStream.addEventListener("scroll", () => {
       this.handleTimelineScroll();
@@ -350,6 +358,7 @@ export class AppRenderer {
     if (changedSlices.has("thread")) {
       this.renderThreadList();
       this.renderContextLabels();
+      this.renderTranscript();
     }
 
     if (changedSlices.has("stream")) {
@@ -500,6 +509,9 @@ export class AppRenderer {
     const fragment = document.createDocumentFragment();
     for (const thread of state.thread.threads) {
       const isSelected = thread.threadId === state.thread.selectedThreadId;
+      const isRunning = state.thread.runningByThreadId[thread.threadId] === true;
+      const hasUnread = state.thread.unreadByThreadId[thread.threadId] === true;
+      const transcriptHydration = state.thread.transcriptsByThreadId[thread.threadId]?.hydration ?? "idle";
       const button = document.createElement("button");
       button.type = "button";
       button.className = `thread-item ${isSelected ? "is-selected" : ""}`.trim();
@@ -517,12 +529,28 @@ export class AppRenderer {
         badgeStack.append(createNavigationStateChip("archived", "Archived"));
       }
 
+      if (isRunning) {
+        badgeStack.append(createNavigationStateChip("running", "Running"));
+      }
+
+      if (hasUnread && !isSelected) {
+        badgeStack.append(createNavigationStateChip("unread", "Unread"));
+      }
+
       if (isSelected) {
         badgeStack.append(createNavigationStateChip("current", "Current"));
         const turnPhaseChip = createTurnPhaseChip(state.stream.turnPhase);
         if (turnPhaseChip) {
           badgeStack.append(turnPhaseChip);
         }
+      }
+
+      if (isSelected && transcriptHydration === "loading") {
+        badgeStack.append(createNavigationStateChip("pending", "Loading"));
+      }
+
+      if (isSelected && transcriptHydration === "error") {
+        badgeStack.append(createNavigationStateChip("error", "History Error"));
       }
 
       if (isSelected && state.session.error && state.stream.turnPhase !== "error") {
@@ -572,6 +600,159 @@ export class AppRenderer {
     this.dom.turnStatusText.textContent = presentation.description;
 
     this.syncTurnStatusTimer(state.stream.turnPhase);
+  }
+
+  private selectedThreadTranscript(state: Readonly<AppState>): ThreadTranscriptState | null {
+    const selectedThreadId = state.thread.selectedThreadId;
+    if (!selectedThreadId) {
+      return null;
+    }
+
+    return state.thread.transcriptsByThreadId[selectedThreadId] ?? null;
+  }
+
+  private transcriptLoadingMessage(transcript: ThreadTranscriptState | null): string {
+    if (!transcript) {
+      return "Select a thread to load history.";
+    }
+
+    if (transcript.hydration === "loading") {
+      return "Loading thread history...";
+    }
+
+    if (transcript.hydration === "error") {
+      return "History load failed. Re-select the thread or retry refresh.";
+    }
+
+    if (transcript.items.length === 0) {
+      return "No messages yet. Send a prompt to begin.";
+    }
+
+    return "";
+  }
+
+  private createTranscriptItem(item: TranscriptItem): HTMLLIElement {
+    const lineItem = document.createElement("li");
+    lineItem.className = `transcript-item transcript-${item.kind}`;
+
+    if (item.kind === "message") {
+      lineItem.classList.add(item.role === "user" ? "transcript-role-user" : "transcript-role-assistant");
+
+      const message = document.createElement("p");
+      message.className = "transcript-message";
+      message.textContent = item.text;
+      lineItem.append(message);
+
+      if (item.streaming) {
+        const streaming = document.createElement("span");
+        streaming.className = "transcript-streaming";
+        streaming.textContent = "Streaming";
+        lineItem.append(streaming);
+      }
+
+      return lineItem;
+    }
+
+    if (item.kind === "reasoning") {
+      const heading = document.createElement("h3");
+      heading.className = "transcript-heading";
+      heading.textContent = "Reasoning";
+
+      const summary = document.createElement("p");
+      summary.className = "transcript-message transcript-reasoning-summary";
+      summary.textContent = item.summary.length > 0 ? item.summary : "Working...";
+
+      lineItem.append(heading, summary);
+
+      if (item.content.length > 0) {
+        const content = document.createElement("pre");
+        content.className = "transcript-code";
+        content.textContent = item.content;
+        lineItem.append(content);
+      }
+
+      if (item.streaming) {
+        const streaming = document.createElement("span");
+        streaming.className = "transcript-streaming";
+        streaming.textContent = "Streaming";
+        lineItem.append(streaming);
+      }
+
+      return lineItem;
+    }
+
+    const heading = document.createElement("h3");
+    heading.className = "transcript-heading";
+    heading.textContent = item.title;
+
+    lineItem.append(heading);
+
+    if (item.detail) {
+      const detail = document.createElement("p");
+      detail.className = "transcript-message transcript-tool-detail";
+      detail.textContent = item.detail;
+      lineItem.append(detail);
+    }
+
+    if (item.output) {
+      const output = document.createElement("pre");
+      output.className = "transcript-code";
+      output.textContent = item.output;
+      lineItem.append(output);
+    }
+
+    if (item.streaming) {
+      const streaming = document.createElement("span");
+      streaming.className = "transcript-streaming";
+      streaming.textContent = "Streaming";
+      lineItem.append(streaming);
+    }
+
+    return lineItem;
+  }
+
+  private renderTranscript(): void {
+    const state = this.readState();
+    const transcript = this.selectedThreadTranscript(state);
+    const placeholderMessage = this.transcriptLoadingMessage(transcript);
+
+    if (placeholderMessage) {
+      this.dom.transcriptList.replaceChildren(renderEmptyMessage(placeholderMessage));
+      this.followTranscript = true;
+      return;
+    }
+
+    if (!transcript) {
+      this.dom.transcriptList.replaceChildren(renderEmptyMessage("Select a thread to load history."));
+      this.followTranscript = true;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const item of transcript.items) {
+      fragment.append(this.createTranscriptItem(item));
+    }
+    this.dom.transcriptList.replaceChildren(fragment);
+
+    if (this.followTranscript) {
+      this.scrollTranscriptToLatest();
+    }
+  }
+
+  private isNearTranscriptBottom(): boolean {
+    const { scrollHeight, scrollTop, clientHeight } = this.dom.transcriptStream;
+    return scrollHeight - (scrollTop + clientHeight) <= TRANSCRIPT_BOTTOM_THRESHOLD_PX;
+  }
+
+  private scrollTranscriptToLatest(): void {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => {
+        this.dom.transcriptStream.scrollTop = this.dom.transcriptStream.scrollHeight;
+      });
+      return;
+    }
+
+    this.dom.transcriptStream.scrollTop = this.dom.transcriptStream.scrollHeight;
   }
 
   private syncTurnStatusTimer(phase: TurnExecutionPhase): void {

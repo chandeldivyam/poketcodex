@@ -414,6 +414,12 @@ form {
   color: #8d2f1f;
 }
 
+.nav-state-unread {
+  border-color: #a7bee8;
+  background: #e8f0ff;
+  color: #1f4c88;
+}
+
 .nav-state-archived {
   border-color: #d4ac7c;
   background: #fff1df;
@@ -507,6 +513,14 @@ form {
   flex-wrap: wrap;
 }
 
+.transcript-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 .event-toolbar-label {
   font-size: 0.8rem;
   color: var(--ink-muted);
@@ -519,6 +533,104 @@ form {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.transcript-stream {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(248, 252, 249, 0.95);
+  min-height: 220px;
+  max-height: min(50dvh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.65rem;
+}
+
+.transcript-stream ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.transcript-item {
+  border: 1px solid #d4e1db;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 0.55rem 0.62rem;
+  display: grid;
+  gap: 0.34rem;
+  font-size: 0.84rem;
+}
+
+.transcript-role-user {
+  border-color: #b6caed;
+  background: #eef5ff;
+}
+
+.transcript-role-assistant {
+  border-color: #c8dccc;
+  background: #f7fcf8;
+}
+
+.transcript-reasoning {
+  border-color: #d4cce9;
+  background: #f8f6fd;
+}
+
+.transcript-tool {
+  border-color: #c1d9d2;
+  background: #f2faf7;
+}
+
+.transcript-heading {
+  margin: 0;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #566b66;
+}
+
+.transcript-message {
+  margin: 0;
+  white-space: pre-wrap;
+  line-break: anywhere;
+}
+
+.transcript-reasoning-summary {
+  color: #3f475f;
+}
+
+.transcript-tool-detail {
+  color: #2c4b45;
+}
+
+.transcript-code {
+  margin: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #d8e4df;
+  border-radius: 8px;
+  background: #fbfefd;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  white-space: pre-wrap;
+  line-break: anywhere;
+}
+
+.transcript-streaming {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid #b7cbc5;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #35554d;
+  background: #ecf4f1;
 }
 
 .event-stream {
@@ -830,6 +942,10 @@ form {
 
   .event-stream {
     max-height: min(48dvh, 520px);
+  }
+
+  .transcript-stream {
+    max-height: min(44dvh, 440px);
   }
 }
 

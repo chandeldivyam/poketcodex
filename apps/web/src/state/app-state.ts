@@ -18,6 +18,50 @@ export interface WorkspaceState {
 export interface ThreadState {
   threads: ThreadListItem[];
   selectedThreadId: string | null;
+  transcriptsByThreadId: Record<string, ThreadTranscriptState>;
+  runningByThreadId: Record<string, boolean>;
+  unreadByThreadId: Record<string, boolean>;
+}
+
+export interface TranscriptMessageItem {
+  id: string;
+  kind: "message";
+  role: "user" | "assistant";
+  text: string;
+  turnId?: string;
+  runtimeItemId?: string;
+  streaming?: boolean;
+}
+
+export interface TranscriptReasoningItem {
+  id: string;
+  kind: "reasoning";
+  summary: string;
+  content: string;
+  turnId?: string;
+  runtimeItemId?: string;
+  streaming?: boolean;
+}
+
+export interface TranscriptToolItem {
+  id: string;
+  kind: "tool";
+  title: string;
+  detail?: string;
+  output?: string;
+  turnId?: string;
+  runtimeItemId?: string;
+  streaming?: boolean;
+}
+
+export type TranscriptItem = TranscriptMessageItem | TranscriptReasoningItem | TranscriptToolItem;
+
+export type ThreadTranscriptHydration = "idle" | "loading" | "loaded" | "error";
+
+export interface ThreadTranscriptState {
+  hydration: ThreadTranscriptHydration;
+  items: TranscriptItem[];
+  lastAppliedSequence: number;
 }
 
 export type TimelineEventKind = "user" | "runtime" | "socket" | "system" | "error";

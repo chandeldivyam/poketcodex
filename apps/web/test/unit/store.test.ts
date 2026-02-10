@@ -18,7 +18,10 @@ function createInitialState(): AppState {
     },
     thread: {
       threads: [],
-      selectedThreadId: null
+      selectedThreadId: null,
+      transcriptsByThreadId: {},
+      runningByThreadId: {},
+      unreadByThreadId: {}
     },
     stream: {
       socketState: "disconnected",
@@ -52,7 +55,10 @@ describe("AppStore", () => {
       },
       thread: {
         threads: [],
-        selectedThreadId: null
+        selectedThreadId: null,
+        transcriptsByThreadId: {},
+        runningByThreadId: {},
+        unreadByThreadId: {}
       }
     });
 

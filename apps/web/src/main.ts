@@ -7,13 +7,28 @@ import {
   type WorkspaceTimelineCategory,
   type WorkspaceTurnSignal
 } from "./lib/normalize.js";
+import {
+  appendAgentMessageDelta,
+  appendReasoningContentDelta,
+  appendReasoningSummaryDelta,
+  extractThreadIdFromRuntimeParams,
+  extractTurnIdFromRuntimeParams,
+  parseWorkspaceRuntimeNotification,
+  setTranscriptItemStreaming,
+  transcriptItemFromRuntimeItem,
+  transcriptItemsFromThreadReadResult,
+  upsertTranscriptItem
+} from "./lib/thread-transcript.js";
 import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
 import type {
   AppState,
   AppStateKey,
+  ThreadTranscriptHydration,
+  ThreadTranscriptState,
   TimelineEventCategory,
   TimelineEventEntry,
   TimelineEventKind,
+  TranscriptItem,
   TurnExecutionPhase
 } from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
@@ -28,11 +43,89 @@ const STORAGE_SHOW_INTERNAL_EVENTS_KEY = "poketcodex.showInternalEvents";
 const STORAGE_SHOW_STATUS_EVENTS_KEY = "poketcodex.showStatusEvents";
 const MAX_STORED_EVENTS = 240;
 const RUNTIME_EVENT_BATCH_MS = 48;
+const MAX_TRANSCRIPT_ITEMS = 320;
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 
 if (!rootElement) {
   throw new Error("App root element is missing");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function createDefaultThreadTranscriptState(
+  hydration: ThreadTranscriptHydration = "idle",
+  items: TranscriptItem[] = [],
+  lastAppliedSequence = 0
+): ThreadTranscriptState {
+  return {
+    hydration,
+    items,
+    lastAppliedSequence
+  };
+}
+
+function trimTranscriptItems(items: TranscriptItem[]): TranscriptItem[] {
+  if (items.length <= MAX_TRANSCRIPT_ITEMS) {
+    return items;
+  }
+
+  return items.slice(items.length - MAX_TRANSCRIPT_ITEMS);
+}
+
+function parseThreadStatusSignal(method: string, params: Record<string, unknown>): boolean | null {
+  if (method === "turn/started" || method === "turn/start") {
+    return true;
+  }
+
+  if (
+    method === "turn/completed" ||
+    method === "turn/interrupted" ||
+    method === "turn/failed" ||
+    method === "turn/cancelled" ||
+    method === "turn/aborted" ||
+    method === "turn/error"
+  ) {
+    return false;
+  }
+
+  if (!method.startsWith("turn/")) {
+    return null;
+  }
+
+  const status = asNonEmptyString(params.status)?.toLowerCase();
+  if (!status) {
+    return null;
+  }
+
+  if (status.includes("run") || status.includes("progress") || status.includes("stream") || status.includes("start")) {
+    return true;
+  }
+
+  if (
+    status.includes("complete") ||
+    status.includes("done") ||
+    status.includes("success") ||
+    status.includes("interrupt") ||
+    status.includes("cancel") ||
+    status.includes("abort") ||
+    status.includes("fail") ||
+    status.includes("error")
+  ) {
+    return false;
+  }
+
+  return null;
 }
 
 function readStorageValue(key: string): string | null {
@@ -93,7 +186,10 @@ const initialState: AppState = {
   },
   thread: {
     threads: [],
-    selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY)
+    selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY),
+    transcriptsByThreadId: {},
+    runningByThreadId: {},
+    unreadByThreadId: {}
   },
   stream: {
     socketState: "disconnected",
@@ -180,9 +276,148 @@ function setSelectedWorkspaceId(workspaceId: string | null): void {
 
 function setSelectedThreadId(threadId: string | null): void {
   writeStorageValue(STORAGE_SELECTED_THREAD_KEY, threadId);
-  store.patchSlice("thread", {
-    selectedThreadId: threadId
+  store.updateSlice("thread", (thread) => {
+    const shouldClearUnread = threadId !== null && thread.unreadByThreadId[threadId] === true;
+    const nextUnreadByThreadId = shouldClearUnread
+      ? {
+          ...thread.unreadByThreadId,
+          [threadId]: false
+        }
+      : thread.unreadByThreadId;
+
+    if (thread.selectedThreadId === threadId && nextUnreadByThreadId === thread.unreadByThreadId) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      selectedThreadId: threadId,
+      unreadByThreadId: nextUnreadByThreadId
+    };
   });
+}
+
+function syncThreadMapsWithList(threads: ThreadListItem[]): void {
+  store.updateSlice("thread", (thread) => {
+    const nextTranscriptsByThreadId: Record<string, ThreadTranscriptState> = {};
+    const nextRunningByThreadId: Record<string, boolean> = {};
+    const nextUnreadByThreadId: Record<string, boolean> = {};
+
+    for (const threadItem of threads) {
+      nextTranscriptsByThreadId[threadItem.threadId] =
+        thread.transcriptsByThreadId[threadItem.threadId] ?? createDefaultThreadTranscriptState();
+      nextRunningByThreadId[threadItem.threadId] = thread.runningByThreadId[threadItem.threadId] ?? false;
+      nextUnreadByThreadId[threadItem.threadId] = thread.unreadByThreadId[threadItem.threadId] ?? false;
+    }
+
+    return {
+      ...thread,
+      threads,
+      transcriptsByThreadId: nextTranscriptsByThreadId,
+      runningByThreadId: nextRunningByThreadId,
+      unreadByThreadId: nextUnreadByThreadId
+    };
+  });
+}
+
+function upsertThreadPlaceholder(threadId: string): void {
+  store.updateSlice("thread", (thread) => {
+    const existingIndex = thread.threads.findIndex((threadEntry) => threadEntry.threadId === threadId);
+    if (existingIndex >= 0) {
+      return thread;
+    }
+
+    const now = new Date().toISOString();
+    const placeholder: ThreadListItem = {
+      threadId,
+      title: threadId,
+      archived: false,
+      lastSeenAt: now
+    };
+
+    return {
+      ...thread,
+      threads: [placeholder, ...thread.threads],
+      transcriptsByThreadId: {
+        ...thread.transcriptsByThreadId,
+        [threadId]: thread.transcriptsByThreadId[threadId] ?? createDefaultThreadTranscriptState()
+      },
+      runningByThreadId: {
+        ...thread.runningByThreadId,
+        [threadId]: thread.runningByThreadId[threadId] ?? false
+      },
+      unreadByThreadId: {
+        ...thread.unreadByThreadId,
+        [threadId]: thread.unreadByThreadId[threadId] ?? false
+      }
+    };
+  });
+}
+
+function updateThreadTranscript(
+  threadId: string,
+  updater: (current: ThreadTranscriptState) => ThreadTranscriptState
+): void {
+  store.updateSlice("thread", (thread) => {
+    const currentTranscript = thread.transcriptsByThreadId[threadId] ?? createDefaultThreadTranscriptState();
+    const nextTranscript = updater(currentTranscript);
+
+    if (nextTranscript === currentTranscript && thread.transcriptsByThreadId[threadId]) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      transcriptsByThreadId: {
+        ...thread.transcriptsByThreadId,
+        [threadId]: nextTranscript
+      }
+    };
+  });
+}
+
+function setThreadRunning(threadId: string, running: boolean): void {
+  store.updateSlice("thread", (thread) => {
+    if ((thread.runningByThreadId[threadId] ?? false) === running) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      runningByThreadId: {
+        ...thread.runningByThreadId,
+        [threadId]: running
+      }
+    };
+  });
+}
+
+function setThreadUnread(threadId: string, unread: boolean): void {
+  store.updateSlice("thread", (thread) => {
+    if ((thread.unreadByThreadId[threadId] ?? false) === unread) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      unreadByThreadId: {
+        ...thread.unreadByThreadId,
+        [threadId]: unread
+      }
+    };
+  });
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    return `${error.statusCode}: ${error.message}`;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "unknown error";
 }
 
 function buildDraftContextKey(workspaceId: string | null, threadId: string | null): string | null {
@@ -507,6 +742,307 @@ function enqueueRuntimeEvent(
   }, RUNTIME_EVENT_BATCH_MS);
 }
 
+function extractRuntimeItemId(params: Record<string, unknown>): string | null {
+  const direct = asNonEmptyString(params.itemId) ?? asNonEmptyString(params.item_id);
+  if (direct) {
+    return direct;
+  }
+
+  const item = asRecord(params.item);
+  return asNonEmptyString(item?.id);
+}
+
+function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unknown): void {
+  if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+    return;
+  }
+
+  const notification = parseWorkspaceRuntimeNotification(payload);
+  if (!notification) {
+    return;
+  }
+
+  const isTranscriptMethod = notification.method.startsWith("turn/") || notification.method.startsWith("item/");
+  const threadId =
+    extractThreadIdFromRuntimeParams(notification.params) ??
+    (isTranscriptMethod ? store.getState().thread.selectedThreadId : null);
+  if (!threadId) {
+    return;
+  }
+
+  const turnId = extractTurnIdFromRuntimeParams(notification.params) ?? undefined;
+  const runtimeItemId = extractRuntimeItemId(notification.params);
+  const method = notification.method;
+  const statusSignal = parseThreadStatusSignal(method, notification.params);
+
+  store.updateSlice("thread", (thread) => {
+    const isSelectedThread = thread.selectedThreadId === threadId;
+    const hasTranscriptEntry = thread.transcriptsByThreadId[threadId] !== undefined;
+    const currentTranscript = thread.transcriptsByThreadId[threadId] ?? createDefaultThreadTranscriptState();
+
+    let nextTranscript = currentTranscript;
+    let transcriptChanged = false;
+    let nextRunning = thread.runningByThreadId[threadId] ?? false;
+    let runningChanged = false;
+    let nextUnread = thread.unreadByThreadId[threadId] ?? false;
+    let unreadChanged = false;
+
+    const setRunning = (running: boolean): void => {
+      if (nextRunning === running) {
+        return;
+      }
+
+      nextRunning = running;
+      runningChanged = true;
+    };
+
+    const setUnread = (unread: boolean): void => {
+      if (nextUnread === unread) {
+        return;
+      }
+
+      nextUnread = unread;
+      unreadChanged = true;
+    };
+
+    if (statusSignal !== null) {
+      setRunning(statusSignal);
+    }
+
+    if (!isSelectedThread) {
+      if (method.startsWith("turn/") || method.startsWith("item/")) {
+        setUnread(true);
+      }
+
+      if (!runningChanged && !unreadChanged) {
+        return thread;
+      }
+
+      return {
+        ...thread,
+        ...(runningChanged
+          ? {
+              runningByThreadId: {
+                ...thread.runningByThreadId,
+                [threadId]: nextRunning
+              }
+            }
+          : {}),
+        ...(unreadChanged
+          ? {
+              unreadByThreadId: {
+                ...thread.unreadByThreadId,
+                [threadId]: nextUnread
+              }
+            }
+          : {})
+      };
+    }
+
+    setUnread(false);
+
+    const shouldSkipBySequence =
+      notification.sequence !== null && notification.sequence <= currentTranscript.lastAppliedSequence;
+
+    if (!shouldSkipBySequence) {
+      if (method === "item/agentMessage/delta") {
+        const delta = asNonEmptyString(notification.params.delta) ?? "";
+        if (runtimeItemId && delta.length > 0) {
+          const nextItems = appendAgentMessageDelta(nextTranscript.items, {
+            itemId: runtimeItemId,
+            delta,
+            ...(turnId ? { turnId } : {})
+          });
+          if (nextItems !== nextTranscript.items) {
+            nextTranscript = {
+              ...nextTranscript,
+              items: trimTranscriptItems(nextItems)
+            };
+            transcriptChanged = true;
+          }
+        }
+      } else if (method === "item/reasoning/summaryTextDelta") {
+        const delta = asNonEmptyString(notification.params.delta) ?? "";
+        if (runtimeItemId && delta.length > 0) {
+          const nextItems = appendReasoningSummaryDelta(nextTranscript.items, {
+            itemId: runtimeItemId,
+            delta,
+            ...(turnId ? { turnId } : {})
+          });
+          if (nextItems !== nextTranscript.items) {
+            nextTranscript = {
+              ...nextTranscript,
+              items: trimTranscriptItems(nextItems)
+            };
+            transcriptChanged = true;
+          }
+        }
+      } else if (method === "item/reasoning/textDelta" || method === "item/reasoning/contentDelta") {
+        const delta = asNonEmptyString(notification.params.delta) ?? "";
+        if (runtimeItemId && delta.length > 0) {
+          const nextItems = appendReasoningContentDelta(nextTranscript.items, {
+            itemId: runtimeItemId,
+            delta,
+            ...(turnId ? { turnId } : {})
+          });
+          if (nextItems !== nextTranscript.items) {
+            nextTranscript = {
+              ...nextTranscript,
+              items: trimTranscriptItems(nextItems)
+            };
+            transcriptChanged = true;
+          }
+        }
+      } else if (method === "item/started" || method === "item/completed" || method === "item/updated") {
+        const runtimeItem = notification.params.item;
+        if (runtimeItem !== undefined) {
+          const transcriptItem = transcriptItemFromRuntimeItem(runtimeItem, {
+            ...(turnId ? { turnId } : {})
+          });
+          if (transcriptItem) {
+            const normalizedItem = {
+              ...transcriptItem,
+              streaming: method !== "item/completed"
+            } satisfies TranscriptItem;
+            const nextItems = upsertTranscriptItem(nextTranscript.items, normalizedItem);
+            if (nextItems !== nextTranscript.items) {
+              nextTranscript = {
+                ...nextTranscript,
+                items: trimTranscriptItems(nextItems)
+              };
+              transcriptChanged = true;
+            }
+          }
+        } else if (runtimeItemId && method === "item/completed") {
+          const nextItems = setTranscriptItemStreaming(nextTranscript.items, {
+            itemId: runtimeItemId,
+            streaming: false
+          });
+          if (nextItems !== nextTranscript.items) {
+            nextTranscript = {
+              ...nextTranscript,
+              items: nextItems
+            };
+            transcriptChanged = true;
+          }
+        }
+      }
+
+      if (notification.sequence !== null && notification.sequence !== nextTranscript.lastAppliedSequence) {
+        nextTranscript = {
+          ...nextTranscript,
+          lastAppliedSequence: notification.sequence
+        };
+        transcriptChanged = true;
+      }
+
+      if (nextTranscript.hydration === "idle") {
+        nextTranscript = {
+          ...nextTranscript,
+          hydration: "loaded"
+        };
+        transcriptChanged = true;
+      }
+    }
+
+    if (!runningChanged && !unreadChanged && !transcriptChanged && hasTranscriptEntry) {
+      return thread;
+    }
+
+    return {
+      ...thread,
+      transcriptsByThreadId:
+        transcriptChanged || !hasTranscriptEntry
+          ? {
+              ...thread.transcriptsByThreadId,
+              [threadId]: nextTranscript
+            }
+          : thread.transcriptsByThreadId,
+      runningByThreadId: runningChanged
+        ? {
+            ...thread.runningByThreadId,
+            [threadId]: nextRunning
+          }
+        : thread.runningByThreadId,
+      unreadByThreadId: unreadChanged
+        ? {
+            ...thread.unreadByThreadId,
+            [threadId]: nextUnread
+          }
+        : thread.unreadByThreadId
+    };
+  });
+}
+
+async function hydrateThreadTranscript(workspaceId: string, threadId: string): Promise<void> {
+  if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+    return;
+  }
+
+  const currentTranscript = store.getState().thread.transcriptsByThreadId[threadId];
+  if (currentTranscript?.hydration === "loaded") {
+    setThreadUnread(threadId, false);
+    return;
+  }
+
+  updateThreadTranscript(threadId, (transcript) => {
+    if (transcript.hydration === "loading") {
+      return transcript;
+    }
+
+    return {
+      ...transcript,
+      hydration: "loading"
+    };
+  });
+
+  try {
+    const csrfToken = requireCsrfToken();
+    const result = await apiClient.readThread(workspaceId, csrfToken, {
+      threadId,
+      includeTurns: true
+    });
+
+    if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+      return;
+    }
+
+    const hydratedItems = trimTranscriptItems(transcriptItemsFromThreadReadResult(result));
+    updateThreadTranscript(threadId, (transcript) => {
+      return createDefaultThreadTranscriptState("loaded", hydratedItems, transcript.lastAppliedSequence);
+    });
+    setThreadUnread(threadId, false);
+  } catch (error: unknown) {
+    updateThreadTranscript(threadId, (transcript) => {
+      return {
+        ...transcript,
+        hydration: "error"
+      };
+    });
+
+    throw error;
+  }
+}
+
+async function ensureThreadForTurn(workspaceId: string, csrfToken: string): Promise<string> {
+  const selectedThreadId = store.getState().thread.selectedThreadId;
+  if (selectedThreadId) {
+    return selectedThreadId;
+  }
+
+  const startResult = await apiClient.startThread(workspaceId, csrfToken, {});
+  const threadId = extractThreadIdFromTurnResult(startResult);
+  if (!threadId) {
+    throw new Error("Start thread failed: backend did not return threadId");
+  }
+
+  upsertThreadPlaceholder(threadId);
+  setSelectedThreadId(threadId);
+  appendEvent(`Thread started: ${threadId}`, "system");
+
+  return threadId;
+}
+
 function formatActionErrorMessage(baseMessage: string, options: ApiErrorHandlingOptions): string {
   if (!options.action) {
     return baseMessage;
@@ -689,7 +1225,10 @@ async function loadWorkspaces(): Promise<void> {
 
   store.patchSlice("thread", {
     threads: [],
-    selectedThreadId: null
+    selectedThreadId: null,
+    transcriptsByThreadId: {},
+    runningByThreadId: {},
+    unreadByThreadId: {}
   });
   setSelectedThreadId(null);
   setTurnExecutionPhase("idle");
@@ -704,13 +1243,23 @@ async function loadThreads(workspaceId: string): Promise<void> {
   }
 
   const threads = normalizeThreadList(response);
-  store.patchSlice("thread", {
-    threads
-  });
+  syncThreadMapsWithList(threads);
 
   const nextThreadId = resolveSelectedThreadId(threads);
   setSelectedThreadId(nextThreadId);
   restoreDraftPrompt(workspaceId, nextThreadId);
+
+  if (!nextThreadId) {
+    return;
+  }
+
+  try {
+    await hydrateThreadTranscript(workspaceId, nextThreadId);
+  } catch (error: unknown) {
+    appendEvent(`Thread history load failed (${nextThreadId}): ${describeError(error)}`, "error", {
+      category: "error"
+    });
+  }
 }
 
 function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): void {
@@ -729,6 +1278,8 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
       });
     },
     onMessage: (payload) => {
+      applyRuntimeNotificationToThreadState(workspaceId, payload);
+
       const normalizedEvent = normalizeWorkspaceTimelineEvent(payload, {
         includeNoise: store.getState().stream.showInternalEvents
       });
@@ -899,7 +1450,10 @@ async function handleLogout(): Promise<void> {
     },
     thread: {
       threads: [],
-      selectedThreadId: null
+      selectedThreadId: null,
+      transcriptsByThreadId: {},
+      runningByThreadId: {},
+      unreadByThreadId: {}
     },
     stream: {
       socketState: "disconnected",
@@ -971,6 +1525,7 @@ async function handleStartThread(): Promise<void> {
     const threadId = extractThreadIdFromTurnResult(result);
 
     if (threadId) {
+      upsertThreadPlaceholder(threadId);
       setSelectedThreadId(threadId);
       appendEvent(`Thread started: ${threadId}`, "system");
     }
@@ -1021,22 +1576,28 @@ async function handleTurnSubmit(event: Event): Promise<void> {
   setBusy(true);
   appendEvent(`Prompt: ${normalizedPrompt}`, "user");
 
+  let submittedThreadId: string | null = null;
+
   try {
     const csrfToken = requireCsrfToken();
+    submittedThreadId = await ensureThreadForTurn(workspace.workspaceId, csrfToken);
+
     const payload: Record<string, unknown> = {
+      threadId: submittedThreadId,
       input: [
         {
           type: "text",
           text: normalizedPrompt
         }
-      ],
-      ...(store.getState().thread.selectedThreadId ? { threadId: store.getState().thread.selectedThreadId } : {})
+      ]
     };
 
     const result = await apiClient.startTurn(workspace.workspaceId, csrfToken, payload);
     const threadId = extractThreadIdFromTurnResult(result);
-    if (threadId) {
-      setSelectedThreadId(threadId);
+    const effectiveThreadId = threadId ?? submittedThreadId;
+    if (effectiveThreadId) {
+      setSelectedThreadId(effectiveThreadId);
+      setThreadRunning(effectiveThreadId, true);
     }
 
     const phaseAfterStartRequest = store.getState().stream.turnPhase;
@@ -1056,6 +1617,9 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     await loadThreads(workspace.workspaceId);
   } catch (error: unknown) {
     setTurnExecutionPhase("error");
+    if (submittedThreadId) {
+      setThreadRunning(submittedThreadId, false);
+    }
     handleApiError(error, {
       action: "Start turn",
       context: describeActionContext(workspace.workspaceId, store.getState().thread.selectedThreadId),
@@ -1197,7 +1761,10 @@ function handleWorkspaceSelection(workspaceId: string): void {
   setSelectedWorkspaceId(workspaceId);
   store.patchSlice("thread", {
     threads: [],
-    selectedThreadId: null
+    selectedThreadId: null,
+    transcriptsByThreadId: {},
+    runningByThreadId: {},
+    unreadByThreadId: {}
   });
   setSelectedThreadId(null);
   restoreDraftPrompt(workspaceId, null);
@@ -1226,10 +1793,28 @@ function handleWorkspaceSelection(workspaceId: string): void {
 }
 
 function handleThreadSelection(threadId: string): void {
+  const existingState = store.getState();
+  const isAlreadySelected = threadId === existingState.thread.selectedThreadId;
+  const existingHydration = existingState.thread.transcriptsByThreadId[threadId]?.hydration;
+  if (isAlreadySelected && existingHydration !== "error") {
+    return;
+  }
+
+  const selectedWorkspaceId = existingState.workspace.selectedWorkspaceId;
   persistCurrentDraftPrompt();
   setSelectedThreadId(threadId);
-  restoreDraftPrompt(store.getState().workspace.selectedWorkspaceId, threadId);
+  restoreDraftPrompt(selectedWorkspaceId, threadId);
   appendEvent(`Selected thread: ${threadId}`, "system");
+
+  if (!selectedWorkspaceId) {
+    return;
+  }
+
+  void hydrateThreadTranscript(selectedWorkspaceId, threadId).catch((error: unknown) => {
+    appendEvent(`Thread history load failed (${threadId}): ${describeError(error)}`, "error", {
+      category: "error"
+    });
+  });
 }
 
 function attachHandlers(): void {

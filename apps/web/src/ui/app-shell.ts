@@ -27,6 +27,8 @@ export interface AppDomRefs {
   turnStatusText: HTMLElement;
   startTurnButton: HTMLButtonElement;
   interruptTurnButton: HTMLButtonElement;
+  transcriptStream: HTMLElement;
+  transcriptList: HTMLOListElement;
   eventStream: HTMLElement;
   eventList: HTMLOListElement;
   toggleStatusEventsButton: HTMLButtonElement;
@@ -131,6 +133,16 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             </div>
           </form>
 
+          <div class="transcript-toolbar">
+            <span class="event-toolbar-label">Conversation</span>
+          </div>
+
+          <div class="transcript-stream" data-role="transcript-stream">
+            <ol data-role="transcript-list">
+              <li class="empty">Select a thread to load history.</li>
+            </ol>
+          </div>
+
           <div class="event-toolbar">
             <span class="event-toolbar-label">Live runtime events</span>
             <div class="event-toolbar-actions">
@@ -179,6 +191,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
     startTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='start-turn']"),
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
+    transcriptStream: requireElement<HTMLElement>(root, "[data-role='transcript-stream']"),
+    transcriptList: requireElement<HTMLOListElement>(root, "[data-role='transcript-list']"),
     eventStream: requireElement<HTMLElement>(root, "[data-role='event-stream']"),
     eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']"),
     toggleStatusEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='toggle-status-events']"),

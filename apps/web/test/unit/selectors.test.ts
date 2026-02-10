@@ -40,7 +40,10 @@ function createState(): AppState {
           lastSeenAt: "2026-02-10T00:00:00.000Z"
         }
       ],
-      selectedThreadId: "thread-1"
+      selectedThreadId: "thread-1",
+      transcriptsByThreadId: {},
+      runningByThreadId: {},
+      unreadByThreadId: {}
     },
     stream: {
       socketState: "connected",

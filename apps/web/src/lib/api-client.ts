@@ -160,6 +160,26 @@ export class ApiClient {
     return response.result;
   }
 
+  async resumeThread(workspaceId: string, csrfToken: string, params: Record<string, unknown>): Promise<unknown> {
+    const response = await this.request<{ result: unknown }>(`/api/workspaces/${workspaceId}/threads/resume`, {
+      method: "POST",
+      csrfToken,
+      body: params
+    });
+
+    return response.result;
+  }
+
+  async readThread(workspaceId: string, csrfToken: string, params: Record<string, unknown>): Promise<unknown> {
+    const response = await this.request<{ result: unknown }>(`/api/workspaces/${workspaceId}/threads/read`, {
+      method: "POST",
+      csrfToken,
+      body: params
+    });
+
+    return response.result;
+  }
+
   async startTurn(workspaceId: string, csrfToken: string, params: Record<string, unknown>): Promise<unknown> {
     const response = await this.request<{ result: unknown }>(`/api/workspaces/${workspaceId}/turns/start`, {
       method: "POST",
