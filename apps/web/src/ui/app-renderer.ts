@@ -305,14 +305,24 @@ export class AppRenderer {
   private renderError(): void {
     const state = this.readState();
     const errorMessage = state.session.error;
+    const retryLabel = state.session.errorRetryLabel;
 
     if (errorMessage) {
       setHidden(this.dom.errorBanner, false);
       this.dom.errorMessage.textContent = errorMessage;
+      if (retryLabel) {
+        this.dom.errorRetryButton.textContent = retryLabel;
+        setHidden(this.dom.errorRetryButton, false);
+      } else {
+        this.dom.errorRetryButton.textContent = "Retry";
+        setHidden(this.dom.errorRetryButton, true);
+      }
       return;
     }
 
     this.dom.errorMessage.textContent = "";
+    this.dom.errorRetryButton.textContent = "Retry";
+    setHidden(this.dom.errorRetryButton, true);
     setHidden(this.dom.errorBanner, true);
   }
 
@@ -328,6 +338,7 @@ export class AppRenderer {
 
     this.dom.refreshWorkspacesButton.disabled = workspaceActionsDisabled;
     this.dom.logoutButton.disabled = workspaceActionsDisabled;
+    this.dom.errorRetryButton.disabled = state.session.busy || state.session.errorRetryLabel === null;
 
     this.dom.loginSubmitButton.disabled = state.session.busy;
     this.dom.workspaceSubmitButton.disabled = state.session.busy;

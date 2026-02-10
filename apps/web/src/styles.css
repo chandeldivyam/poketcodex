@@ -135,12 +135,23 @@ body {
 }
 
 .error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
   border-radius: var(--radius-md);
   border: 1px solid #ebc4b8;
   background: #ffece7;
   color: var(--warning);
   padding: var(--space-3) var(--space-4);
   font-size: 0.95rem;
+}
+
+.error-retry-button {
+  min-height: 38px;
+  padding: 0.45rem 0.8rem;
+  flex: 0 0 auto;
 }
 
 .panel-grid {

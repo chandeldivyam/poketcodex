@@ -84,7 +84,8 @@ const initialState: AppState = {
     authenticated: false,
     csrfToken: null,
     busy: false,
-    error: null
+    error: null,
+    errorRetryLabel: null
   },
   workspace: {
     workspaces: [],
@@ -123,6 +124,11 @@ const pendingRuntimeEvents: Array<{
 }> = [];
 const pendingChangedSlices = new Set<AppStateKey>();
 const draftCacheByContext = new Map<string, string>();
+type RetryAction = {
+  label: string;
+  run: () => Promise<void>;
+};
+let pendingRetryAction: RetryAction | null = null;
 
 store.subscribe((_state, changedSlices) => {
   for (const key of changedSlices) {
@@ -216,13 +222,26 @@ function restoreDraftPrompt(workspaceId: string | null, threadId: string | null)
 }
 
 function setError(message: string | null): void {
+  pendingRetryAction = null;
   store.patchSlice("session", {
-    error: message
+    error: message,
+    errorRetryLabel: null
+  });
+}
+
+function setRetryAction(action: RetryAction | null): void {
+  pendingRetryAction = action;
+  store.patchSlice("session", {
+    errorRetryLabel: action?.label ?? null
   });
 }
 
 function clearError(): void {
-  setError(null);
+  store.patchSlice("session", {
+    error: null,
+    errorRetryLabel: null
+  });
+  pendingRetryAction = null;
 }
 
 function setBusy(busy: boolean): void {
@@ -450,23 +469,108 @@ function enqueueRuntimeEvent(
   }, RUNTIME_EVENT_BATCH_MS);
 }
 
-function handleApiError(error: unknown): void {
+function handleApiError(error: unknown, retryAction: RetryAction | null = null): void {
   if (error instanceof ApiClientError) {
     const message = `${error.statusCode}: ${error.message}`;
     setError(message);
+    setRetryAction(retryAction);
     appendEvent(message, "error");
     return;
   }
 
   if (error instanceof Error) {
     setError(error.message);
+    setRetryAction(retryAction);
     appendEvent(error.message, "error");
     return;
   }
 
   const message = "An unknown error occurred";
   setError(message);
+  setRetryAction(retryAction);
   appendEvent(message, "error");
+}
+
+function buildRetryWorkspacesAction(): RetryAction {
+  return {
+    label: "Retry Refresh Workspaces",
+    run: async () => {
+      clearError();
+      setBusy(true);
+
+      try {
+        await loadWorkspaces();
+      } catch (error: unknown) {
+        handleApiError(error, buildRetryWorkspacesAction());
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+}
+
+function buildRetryThreadsAction(workspaceId: string): RetryAction {
+  return {
+    label: "Retry Refresh Threads",
+    run: async () => {
+      clearError();
+      setBusy(true);
+
+      try {
+        await loadThreads(workspaceId);
+      } catch (error: unknown) {
+        handleApiError(error, buildRetryThreadsAction(workspaceId));
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+}
+
+function buildRetryWorkspaceSwitchAction(workspaceId: string): RetryAction {
+  return {
+    label: "Retry Workspace Load",
+    run: async () => {
+      clearError();
+      setBusy(true);
+
+      try {
+        await loadThreads(workspaceId);
+        connectWorkspaceEvents(workspaceId, true);
+      } catch (error: unknown) {
+        handleApiError(error, buildRetryWorkspaceSwitchAction(workspaceId));
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+}
+
+function buildRetrySessionInitAction(): RetryAction {
+  return {
+    label: "Retry Session Init",
+    run: async () => {
+      clearError();
+      setBusy(true);
+
+      try {
+        await initializeSession();
+      } catch (error: unknown) {
+        handleApiError(error, buildRetrySessionInitAction());
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+}
+
+async function handleRetryErrorAction(): Promise<void> {
+  const retryAction = pendingRetryAction;
+  if (!retryAction) {
+    return;
+  }
+
+  await retryAction.run();
 }
 
 function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | null {
@@ -683,7 +787,8 @@ async function handleLogout(): Promise<void> {
       authenticated: false,
       csrfToken: null,
       busy: false,
-      error: null
+      error: null,
+      errorRetryLabel: null
     },
     workspace: {
       workspaces: [],
@@ -921,7 +1026,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
       connectWorkspaceEvents(workspaceId, true);
     })
     .catch((error: unknown) => {
-      handleApiError(error);
+      handleApiError(error, buildRetryWorkspaceSwitchAction(workspaceId));
     });
 }
 
@@ -1000,12 +1105,16 @@ function attachHandlers(): void {
 
   dom.refreshWorkspacesButton.addEventListener("click", () => {
     void loadWorkspaces().catch((error: unknown) => {
-      handleApiError(error);
+      handleApiError(error, buildRetryWorkspacesAction());
     });
   });
 
   dom.reconnectEventsButton.addEventListener("click", () => {
     handleReconnectEvents();
+  });
+
+  dom.errorRetryButton.addEventListener("click", () => {
+    void handleRetryErrorAction();
   });
 
   dom.toggleStatusEventsButton.addEventListener("click", () => {
@@ -1023,7 +1132,7 @@ function attachHandlers(): void {
     }
 
     void loadThreads(selectedWorkspaceId).catch((error: unknown) => {
-      handleApiError(error);
+      handleApiError(error, buildRetryThreadsAction(selectedWorkspaceId));
     });
   });
 
@@ -1044,5 +1153,5 @@ attachHandlers();
 renderer.renderAll();
 
 void initializeSession().catch((error: unknown) => {
-  handleApiError(error);
+  handleApiError(error, buildRetrySessionInitAction());
 });

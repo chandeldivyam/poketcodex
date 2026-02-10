@@ -9,7 +9,8 @@ function createInitialState(): AppState {
       authenticated: false,
       csrfToken: null,
       busy: false,
-      error: null
+      error: null,
+      errorRetryLabel: null
     },
     workspace: {
       workspaces: [],

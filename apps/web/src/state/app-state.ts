@@ -7,6 +7,7 @@ export interface SessionState {
   csrfToken: string | null;
   busy: boolean;
   error: string | null;
+  errorRetryLabel: string | null;
 }
 
 export interface WorkspaceState {

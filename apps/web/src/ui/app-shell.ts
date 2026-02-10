@@ -3,6 +3,7 @@ export interface AppDomRefs {
   appPanels: HTMLElement;
   errorBanner: HTMLElement;
   errorMessage: HTMLElement;
+  errorRetryButton: HTMLButtonElement;
   socketStateChip: HTMLElement;
   refreshWorkspacesButton: HTMLButtonElement;
   reconnectEventsButton: HTMLButtonElement;
@@ -61,6 +62,9 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
       <section class="error-banner is-hidden" data-role="error-banner">
         <span data-role="error-message"></span>
+        <button class="button-secondary is-hidden error-retry-button" type="button" data-role="error-retry">
+          Retry
+        </button>
       </section>
 
       <section class="panel login-panel" data-role="login-panel">
@@ -151,6 +155,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     appPanels: requireElement<HTMLElement>(root, "[data-role='app-panels']"),
     errorBanner: requireElement<HTMLElement>(root, "[data-role='error-banner']"),
     errorMessage: requireElement<HTMLElement>(root, "[data-role='error-message']"),
+    errorRetryButton: requireElement<HTMLButtonElement>(root, "[data-role='error-retry']"),
     socketStateChip: requireElement<HTMLElement>(root, "[data-role='socket-state']"),
     refreshWorkspacesButton: requireElement<HTMLButtonElement>(root, "[data-role='refresh-workspaces']"),
     reconnectEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='reconnect-events']"),

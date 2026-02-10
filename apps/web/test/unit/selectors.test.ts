@@ -15,7 +15,8 @@ function createState(): AppState {
       authenticated: true,
       csrfToken: "token",
       busy: false,
-      error: null
+      error: null,
+      errorRetryLabel: null
     },
     workspace: {
       workspaces: [
