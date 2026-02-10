@@ -14,6 +14,7 @@ PocketCodex backend reads configuration from environment variables and validates
 - `NODE_ENV`: `development`, `test`, or `production` (default `development`).
 - `HOST`: Bind host (default `127.0.0.1`).
 - `PORT`: Bind port (default `8787`).
+- `SQLITE_DATABASE_PATH`: SQLite file path (default `./data/poketcodex.db`), use `:memory:` for ephemeral tests.
 - `LOG_LEVEL`: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent` (default `info`).
 - `AUTH_MODE`: Currently supports `single_user`.
 - `COOKIE_SECURE`: Boolean-like value (`true/false/1/0`) for cookie secure flag.

@@ -41,6 +41,7 @@ describe("startup integration", () => {
       NODE_ENV: "test",
       HOST: "127.0.0.1",
       PORT: "8787",
+      SQLITE_DATABASE_PATH: ":memory:",
       AUTH_MODE: "single_user",
       AUTH_PASSWORD: "pocketcodex-test-password",
       SESSION_SECRET: "",

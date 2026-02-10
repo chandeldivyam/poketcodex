@@ -36,6 +36,7 @@ function buildTestEnv(port: number): NodeJS.ProcessEnv {
     NODE_ENV: "test",
     HOST: "127.0.0.1",
     PORT: String(port),
+    SQLITE_DATABASE_PATH: ":memory:",
     LOG_LEVEL: "info",
     AUTH_MODE: "single_user",
     AUTH_PASSWORD: "pocketcodex-test-password",

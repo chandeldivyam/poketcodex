@@ -6,6 +6,8 @@ import { authPlugin } from "./auth/plugin.js";
 import type { InMemorySessionStore } from "./auth/session-store.js";
 import type { AppConfig, LogLevel } from "./config.js";
 import { createLoggerOptions } from "./logger.js";
+import { workspacePlugin } from "./workspaces/plugin.js";
+import type { WorkspaceService } from "./workspaces/service.js";
 
 export interface BuildAppOptions {
   logger?: boolean;
@@ -13,6 +15,7 @@ export interface BuildAppOptions {
   loggerStream?: NodeJS.WritableStream;
   authConfig?: AppConfig;
   sessionStore?: InMemorySessionStore;
+  workspaceService?: WorkspaceService;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -45,6 +48,12 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.register(authPlugin, {
       config: options.authConfig,
       ...(options.sessionStore ? { sessionStore: options.sessionStore } : {})
+    });
+  }
+
+  if (options.workspaceService) {
+    app.register(workspacePlugin, {
+      workspaceService: options.workspaceService
     });
   }
 

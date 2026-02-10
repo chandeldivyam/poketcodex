@@ -10,6 +10,7 @@ export interface AppConfig {
   nodeEnv: NodeEnvironment;
   host: string;
   port: number;
+  sqliteDatabasePath: string;
   logLevel: LogLevel;
   authMode: AuthMode;
   authPassword: string;
@@ -24,6 +25,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().trim().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+  SQLITE_DATABASE_PATH: z.string().trim().min(1).default("./data/poketcodex.db"),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
   AUTH_MODE: z.enum(["single_user"]).default("single_user"),
   AUTH_PASSWORD: z.string().trim().min(12, "AUTH_PASSWORD must be at least 12 characters long"),
@@ -115,6 +117,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     nodeEnv: configData.NODE_ENV,
     host: configData.HOST,
     port: configData.PORT,
+    sqliteDatabasePath:
+      configData.SQLITE_DATABASE_PATH === ":memory:"
+        ? ":memory:"
+        : path.resolve(configData.SQLITE_DATABASE_PATH),
     logLevel: configData.LOG_LEVEL,
     authMode: configData.AUTH_MODE,
     authPassword: configData.AUTH_PASSWORD,

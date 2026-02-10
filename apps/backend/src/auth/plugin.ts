@@ -1,4 +1,5 @@
 import cookie from "@fastify/cookie";
+import fastifyPlugin from "fastify-plugin";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
 import type { AppConfig } from "../config.js";
@@ -60,7 +61,7 @@ function clearSessionCookie(reply: FastifyReply, config: AppConfig): void {
   });
 }
 
-export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, options) => {
+const authPluginImplementation: FastifyPluginAsync<AuthPluginOptions> = async (app, options) => {
   const { config } = options;
   const sessionStore = options.sessionStore ?? new InMemorySessionStore();
 
@@ -162,3 +163,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opt
     };
   });
 };
+
+export const authPlugin = fastifyPlugin(authPluginImplementation, {
+  name: "poketcodex-auth-plugin"
+});
