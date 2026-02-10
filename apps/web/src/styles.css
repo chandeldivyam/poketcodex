@@ -32,6 +32,10 @@ body {
     linear-gradient(150deg, var(--bg-1), var(--bg-2));
 }
 
+.is-hidden {
+  display: none !important;
+}
+
 .app-shell {
   width: min(100%, 1200px);
   margin: 0 auto;

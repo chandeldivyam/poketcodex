@@ -5,62 +5,23 @@ import {
   normalizeThreadList,
   type ThreadListItem
 } from "./lib/normalize.js";
-import { ReconnectingWorkspaceSocket, type SocketConnectionState } from "./lib/ws-reconnect.js";
+import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
+import type { AppState, AppStateKey } from "./state/app-state.js";
+import { selectActiveWorkspace } from "./state/selectors.js";
+import { AppStore } from "./state/store.js";
+import { AppRenderer } from "./ui/app-renderer.js";
+import { createAppShell } from "./ui/app-shell.js";
 import "./styles.css";
-
-interface AppState {
-  authenticated: boolean;
-  csrfToken: string | null;
-  socketState: SocketConnectionState;
-  busy: boolean;
-  error: string | null;
-  workspaces: WorkspaceRecord[];
-  selectedWorkspaceId: string | null;
-  threads: ThreadListItem[];
-  selectedThreadId: string | null;
-  draftPrompt: string;
-  events: string[];
-}
 
 const STORAGE_SELECTED_WORKSPACE_KEY = "poketcodex.selectedWorkspaceId";
 const STORAGE_SELECTED_THREAD_KEY = "poketcodex.selectedThreadId";
-const MAX_RENDERED_EVENTS = 100;
 const MAX_STORED_EVENTS = 240;
-
-const HTML_ESCAPE_LOOKUP: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;"
-};
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 
 if (!rootElement) {
   throw new Error("App root element is missing");
 }
-
-const root: HTMLDivElement = rootElement;
-
-const apiClient = new ApiClient("");
-const state: AppState = {
-  authenticated: false,
-  csrfToken: null,
-  socketState: "disconnected",
-  busy: false,
-  error: null,
-  workspaces: [],
-  selectedWorkspaceId: readStorageValue(STORAGE_SELECTED_WORKSPACE_KEY),
-  threads: [],
-  selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY),
-  draftPrompt: "",
-  events: []
-};
-
-let workspaceSocket: ReconnectingWorkspaceSocket | undefined;
-let workspaceSocketWorkspaceId: string | null = null;
-let renderScheduled = false;
 
 function readStorageValue(key: string): string | null {
   try {
@@ -84,57 +45,45 @@ function writeStorageValue(key: string, value: string | null): void {
   }
 }
 
-function setSelectedWorkspaceId(workspaceId: string | null): void {
-  state.selectedWorkspaceId = workspaceId;
-  writeStorageValue(STORAGE_SELECTED_WORKSPACE_KEY, workspaceId);
-}
+const initialState: AppState = {
+  session: {
+    authenticated: false,
+    csrfToken: null,
+    busy: false,
+    error: null
+  },
+  workspace: {
+    workspaces: [],
+    selectedWorkspaceId: readStorageValue(STORAGE_SELECTED_WORKSPACE_KEY)
+  },
+  thread: {
+    threads: [],
+    selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY)
+  },
+  stream: {
+    socketState: "disconnected",
+    draftPrompt: "",
+    events: []
+  }
+};
 
-function setSelectedThreadId(threadId: string | null): void {
-  state.selectedThreadId = threadId;
-  writeStorageValue(STORAGE_SELECTED_THREAD_KEY, threadId);
-}
+const apiClient = new ApiClient("");
+const store = new AppStore(initialState);
+const dom = createAppShell(rootElement);
+const renderer = new AppRenderer(dom, () => store.getState());
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => HTML_ESCAPE_LOOKUP[character] ?? character);
-}
+let workspaceSocket: ReconnectingWorkspaceSocket | undefined;
+let workspaceSocketWorkspaceId: string | null = null;
+let renderScheduled = false;
+const pendingChangedSlices = new Set<AppStateKey>();
 
-function setError(message: string | null): void {
-  state.error = message;
-}
-
-function clearError(): void {
-  setError(null);
-}
-
-function setBusy(busy: boolean): void {
-  state.busy = busy;
-}
-
-function activeWorkspace(): WorkspaceRecord | null {
-  if (!state.selectedWorkspaceId) {
-    return null;
+store.subscribe((_state, changedSlices) => {
+  for (const key of changedSlices) {
+    pendingChangedSlices.add(key);
   }
 
-  return state.workspaces.find((workspace) => workspace.workspaceId === state.selectedWorkspaceId) ?? null;
-}
-
-function selectedThreadLabel(): string {
-  if (!state.selectedThreadId) {
-    return "None";
-  }
-
-  const selectedThread = state.threads.find((thread) => thread.threadId === state.selectedThreadId);
-  return selectedThread ? selectedThread.title : state.selectedThreadId;
-}
-
-function appendEvent(line: string): void {
-  const timestamp = new Date().toLocaleTimeString();
-  state.events.push(`${timestamp} ${line}`);
-
-  if (state.events.length > MAX_STORED_EVENTS) {
-    state.events.splice(0, state.events.length - MAX_STORED_EVENTS);
-  }
-}
+  scheduleRender();
+});
 
 function scheduleRender(): void {
   if (renderScheduled) {
@@ -144,139 +93,73 @@ function scheduleRender(): void {
   renderScheduled = true;
 
   if (typeof window.requestAnimationFrame === "function") {
-    window.requestAnimationFrame(() => {
-      renderScheduled = false;
-      render();
-    });
+    window.requestAnimationFrame(flushRender);
     return;
   }
 
-  window.setTimeout(() => {
-    renderScheduled = false;
-    render();
-  }, 16);
+  window.setTimeout(flushRender, 16);
 }
 
-function render(): void {
-  const workspaceItems = state.workspaces
-    .map((workspace) => {
-      const isSelected = workspace.workspaceId === state.selectedWorkspaceId;
-      return `
-        <button class="workspace-item ${isSelected ? "is-selected" : ""}" data-action="select-workspace" data-workspace-id="${escapeHtml(workspace.workspaceId)}">
-          <strong>${escapeHtml(workspace.displayName)}</strong>
-          <span>${escapeHtml(workspace.absolutePath)}</span>
-        </button>
-      `;
-    })
-    .join("");
+function flushRender(): void {
+  renderScheduled = false;
 
-  const threadItems = state.threads
-    .map((thread) => {
-      const isSelected = thread.threadId === state.selectedThreadId;
-      const archivedBadge = thread.archived ? "<span class=\"thread-badge\">Archived</span>" : "";
+  if (pendingChangedSlices.size === 0) {
+    return;
+  }
 
-      return `
-        <button class="thread-item ${isSelected ? "is-selected" : ""}" data-action="select-thread" data-thread-id="${escapeHtml(thread.threadId)}">
-          <strong>${escapeHtml(thread.title)}</strong>
-          <span>${escapeHtml(thread.threadId)}</span>
-          ${archivedBadge}
-        </button>
-      `;
-    })
-    .join("");
+  const changedSlices = new Set(pendingChangedSlices);
+  pendingChangedSlices.clear();
+  renderer.render(changedSlices);
+}
 
-  const eventItems = state.events
-    .slice(-MAX_RENDERED_EVENTS)
-    .map((eventLine) => `<li>${escapeHtml(eventLine)}</li>`)
-    .join("");
+function setSelectedWorkspaceId(workspaceId: string | null): void {
+  writeStorageValue(STORAGE_SELECTED_WORKSPACE_KEY, workspaceId);
+  store.patchSlice("workspace", {
+    selectedWorkspaceId: workspaceId
+  });
+}
 
-  const selectedWorkspace = activeWorkspace();
-  const connectionClass = `status-chip state-${state.socketState}`;
-  const workspaceActionsDisabled = !state.authenticated || state.busy;
-  const threadActionsDisabled = !state.selectedWorkspaceId || !state.authenticated || state.busy;
-  const reconnectButtonLabel = state.socketState === "connected" ? "Resubscribe" : "Reconnect";
+function setSelectedThreadId(threadId: string | null): void {
+  writeStorageValue(STORAGE_SELECTED_THREAD_KEY, threadId);
+  store.patchSlice("thread", {
+    selectedThreadId: threadId
+  });
+}
 
-  root.innerHTML = `
-    <main class="app-shell">
-      <header class="app-header">
-        <h1>PocketCodex</h1>
-        <p>Mobile Codex control plane</p>
-        <div class="status-row">
-          <span class="${connectionClass}">${state.socketState}</span>
-          <button class="button-secondary" data-action="refresh-workspaces" ${workspaceActionsDisabled ? "disabled" : ""}>Refresh</button>
-          <button class="button-secondary" data-action="reconnect-events" ${threadActionsDisabled ? "disabled" : ""}>${reconnectButtonLabel}</button>
-          <button class="button-secondary" data-action="logout" ${workspaceActionsDisabled ? "disabled" : ""}>Logout</button>
-        </div>
-      </header>
+function setError(message: string | null): void {
+  store.patchSlice("session", {
+    error: message
+  });
+}
 
-      ${state.error ? `<section class="error-banner">${escapeHtml(state.error)}</section>` : ""}
+function clearError(): void {
+  setError(null);
+}
 
-      ${
-        !state.authenticated
-          ? `
-        <section class="panel login-panel">
-          <h2>Sign In</h2>
-          <form id="login-form">
-            <label>
-              Password
-              <input type="password" name="password" autocomplete="current-password" required />
-            </label>
-            <button type="submit" ${state.busy ? "disabled" : ""}>Login</button>
-          </form>
-        </section>
-      `
-          : `
-        <section class="panel-grid">
-          <section class="panel workspace-panel">
-            <h2>Workspaces</h2>
-            <form id="workspace-form">
-              <label>
-                Absolute Path
-                <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required />
-              </label>
-              <label>
-                Display Name
-                <input type="text" name="displayName" placeholder="My Repo" />
-              </label>
-              <button type="submit" ${state.busy ? "disabled" : ""}>Add Workspace</button>
-            </form>
-            <div class="list-container">${workspaceItems || '<p class="empty">No workspaces yet.</p>'}</div>
-          </section>
+function setBusy(busy: boolean): void {
+  store.patchSlice("session", {
+    busy
+  });
+}
 
-          <section class="panel thread-panel">
-            <h2>Threads</h2>
-            <div class="thread-actions">
-              <button class="button-secondary" data-action="refresh-threads" ${threadActionsDisabled ? "disabled" : ""}>Refresh Threads</button>
-              <button data-action="start-thread" ${threadActionsDisabled ? "disabled" : ""}>Start Thread</button>
-            </div>
-            <div class="list-container">${threadItems || '<p class="empty">No thread metadata yet.</p>'}</div>
-            <p class="selected-thread">Workspace: ${escapeHtml(selectedWorkspace?.displayName ?? "None")}</p>
-            <p class="selected-thread">Thread: ${escapeHtml(selectedThreadLabel())}</p>
-          </section>
+function activeWorkspace(): WorkspaceRecord | null {
+  return selectActiveWorkspace(store.getState());
+}
 
-          <section class="panel event-panel">
-            <h2>Turn Console</h2>
-            <form id="turn-form">
-              <label>
-                Prompt
-                <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required>${escapeHtml(state.draftPrompt)}</textarea>
-              </label>
-              <div class="turn-actions">
-                <button type="submit" ${threadActionsDisabled ? "disabled" : ""}>Start Turn</button>
-                <button class="button-danger" type="button" data-action="interrupt-turn" ${threadActionsDisabled ? "disabled" : ""}>Interrupt</button>
-              </div>
-            </form>
-            <div class="event-stream">
-              <ol>${eventItems || "<li>Awaiting events...</li>"}</ol>
-            </div>
-          </section>
-        </section>
-      `
-      }
-    </main>
-  `;
+function appendEvent(line: string): void {
+  store.updateSlice("stream", (stream) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const nextEvents = [...stream.events, `${timestamp} ${line}`];
 
-  attachHandlers();
+    if (nextEvents.length > MAX_STORED_EVENTS) {
+      nextEvents.splice(0, nextEvents.length - MAX_STORED_EVENTS);
+    }
+
+    return {
+      ...stream,
+      events: nextEvents
+    };
+  });
 }
 
 function handleApiError(error: unknown): void {
@@ -294,8 +177,9 @@ function handleApiError(error: unknown): void {
 }
 
 function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | null {
-  if (state.selectedWorkspaceId && workspaces.some((workspace) => workspace.workspaceId === state.selectedWorkspaceId)) {
-    return state.selectedWorkspaceId;
+  const selectedWorkspaceId = store.getState().workspace.selectedWorkspaceId;
+  if (selectedWorkspaceId && workspaces.some((workspace) => workspace.workspaceId === selectedWorkspaceId)) {
+    return selectedWorkspaceId;
   }
 
   const storedWorkspaceId = readStorageValue(STORAGE_SELECTED_WORKSPACE_KEY);
@@ -307,8 +191,9 @@ function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | nul
 }
 
 function resolveSelectedThreadId(threads: ThreadListItem[]): string | null {
-  if (state.selectedThreadId && threads.some((thread) => thread.threadId === state.selectedThreadId)) {
-    return state.selectedThreadId;
+  const selectedThreadId = store.getState().thread.selectedThreadId;
+  if (selectedThreadId && threads.some((thread) => thread.threadId === selectedThreadId)) {
+    return selectedThreadId;
   }
 
   const storedThreadId = readStorageValue(STORAGE_SELECTED_THREAD_KEY);
@@ -319,39 +204,44 @@ function resolveSelectedThreadId(threads: ThreadListItem[]): string | null {
   return threads[0]?.threadId ?? null;
 }
 
-async function loadWorkspaces(shouldRender = true): Promise<void> {
+async function loadWorkspaces(): Promise<void> {
   const response = await apiClient.listWorkspaces();
-  state.workspaces = response.workspaces;
 
-  setSelectedWorkspaceId(resolveSelectedWorkspaceId(state.workspaces));
+  store.patchSlice("workspace", {
+    workspaces: response.workspaces
+  });
 
-  if (state.selectedWorkspaceId) {
-    await loadThreads(state.selectedWorkspaceId, false);
-    connectWorkspaceEvents(state.selectedWorkspaceId);
-  } else {
-    state.threads = [];
-    setSelectedThreadId(null);
-    disconnectWorkspaceEvents();
-  }
+  const nextWorkspaceId = resolveSelectedWorkspaceId(response.workspaces);
+  setSelectedWorkspaceId(nextWorkspaceId);
 
-  if (shouldRender) {
-    render();
-  }
-}
-
-async function loadThreads(workspaceId: string, shouldRender = true): Promise<void> {
-  const response = await apiClient.listThreads(workspaceId);
-
-  if (workspaceId !== state.selectedWorkspaceId) {
+  if (nextWorkspaceId) {
+    await loadThreads(nextWorkspaceId);
+    connectWorkspaceEvents(nextWorkspaceId);
     return;
   }
 
-  state.threads = normalizeThreadList(response);
-  setSelectedThreadId(resolveSelectedThreadId(state.threads));
+  store.patchSlice("thread", {
+    threads: [],
+    selectedThreadId: null
+  });
+  setSelectedThreadId(null);
+  disconnectWorkspaceEvents();
+}
 
-  if (shouldRender) {
-    render();
+async function loadThreads(workspaceId: string): Promise<void> {
+  const response = await apiClient.listThreads(workspaceId);
+
+  if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+    return;
   }
+
+  const threads = normalizeThreadList(response);
+  store.patchSlice("thread", {
+    threads
+  });
+
+  const nextThreadId = resolveSelectedThreadId(threads);
+  setSelectedThreadId(nextThreadId);
 }
 
 function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): void {
@@ -365,8 +255,9 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
   workspaceSocket = new ReconnectingWorkspaceSocket({
     workspaceId,
     onStateChange: (nextState) => {
-      state.socketState = nextState;
-      scheduleRender();
+      store.patchSlice("stream", {
+        socketState: nextState
+      });
     },
     onMessage: (payload) => {
       const formattedEvent = formatWorkspaceEvent(payload);
@@ -375,7 +266,6 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
       }
 
       appendEvent(formattedEvent);
-      scheduleRender();
     }
   });
 
@@ -389,69 +279,79 @@ function disconnectWorkspaceEvents(): void {
   }
 
   workspaceSocketWorkspaceId = null;
-  state.socketState = "disconnected";
+  store.patchSlice("stream", {
+    socketState: "disconnected"
+  });
 }
 
 async function initializeSession(): Promise<void> {
   const session = await apiClient.getSession();
-  state.authenticated = session.authenticated;
-  state.csrfToken = session.csrfToken ?? null;
 
-  if (state.authenticated) {
-    await loadWorkspaces(false);
-  } else {
-    disconnectWorkspaceEvents();
+  store.patchSlice("session", {
+    authenticated: session.authenticated,
+    csrfToken: session.csrfToken ?? null
+  });
+
+  if (session.authenticated) {
+    await loadWorkspaces();
+    return;
   }
+
+  disconnectWorkspaceEvents();
 }
 
 function requireCsrfToken(): string {
-  if (!state.csrfToken) {
+  const csrfToken = store.getState().session.csrfToken;
+  if (!csrfToken) {
     throw new Error("Missing CSRF token. Please login again.");
   }
 
-  return state.csrfToken;
+  return csrfToken;
 }
 
 async function handleLoginSubmit(event: Event): Promise<void> {
   event.preventDefault();
-  const form = event.currentTarget as HTMLFormElement;
-  const formData = new FormData(form);
+  const formData = new FormData(dom.loginForm);
   const password = formData.get("password");
 
   if (typeof password !== "string" || password.trim().length === 0) {
     setError("Password is required");
-    render();
     return;
   }
 
   clearError();
   setBusy(true);
-  render();
 
   try {
     const loginResponse = await apiClient.login(password.trim());
-    state.authenticated = loginResponse.authenticated;
-    state.csrfToken = loginResponse.csrfToken ?? null;
-    state.events = [];
 
-    if (state.authenticated) {
-      await loadWorkspaces(false);
-      form.reset();
-    } else {
-      setError("Login failed");
+    store.patchSlice("session", {
+      authenticated: loginResponse.authenticated,
+      csrfToken: loginResponse.csrfToken ?? null
+    });
+
+    store.patchSlice("stream", {
+      draftPrompt: "",
+      events: []
+    });
+
+    if (loginResponse.authenticated) {
+      await loadWorkspaces();
+      dom.loginForm.reset();
+      return;
     }
+
+    setError("Login failed");
   } catch (error: unknown) {
     handleApiError(error);
   } finally {
     setBusy(false);
-    render();
   }
 }
 
 async function handleLogout(): Promise<void> {
   clearError();
   setBusy(true);
-  render();
 
   try {
     const csrfToken = requireCsrfToken();
@@ -461,34 +361,46 @@ async function handleLogout(): Promise<void> {
   }
 
   disconnectWorkspaceEvents();
-  state.authenticated = false;
-  state.csrfToken = null;
-  state.workspaces = [];
-  state.threads = [];
   setSelectedWorkspaceId(null);
   setSelectedThreadId(null);
-  state.events = [];
-  setBusy(false);
-  render();
+
+  store.setState({
+    session: {
+      authenticated: false,
+      csrfToken: null,
+      busy: false,
+      error: null
+    },
+    workspace: {
+      workspaces: [],
+      selectedWorkspaceId: null
+    },
+    thread: {
+      threads: [],
+      selectedThreadId: null
+    },
+    stream: {
+      socketState: "disconnected",
+      draftPrompt: "",
+      events: []
+    }
+  });
 }
 
 async function handleWorkspaceCreate(event: Event): Promise<void> {
   event.preventDefault();
-  const form = event.currentTarget as HTMLFormElement;
-  const formData = new FormData(form);
+  const formData = new FormData(dom.workspaceForm);
 
   const absolutePath = formData.get("absolutePath");
   const displayName = formData.get("displayName");
 
   if (typeof absolutePath !== "string" || absolutePath.trim().length === 0) {
     setError("Workspace path is required");
-    render();
     return;
   }
 
   clearError();
   setBusy(true);
-  render();
 
   try {
     const csrfToken = requireCsrfToken();
@@ -502,13 +414,13 @@ async function handleWorkspaceCreate(event: Event): Promise<void> {
     setSelectedWorkspaceId(response.workspace.workspaceId);
     setSelectedThreadId(null);
     appendEvent(`Workspace created: ${response.workspace.displayName}`);
-    await loadWorkspaces(false);
-    form.reset();
+
+    await loadWorkspaces();
+    dom.workspaceForm.reset();
   } catch (error: unknown) {
     handleApiError(error);
   } finally {
     setBusy(false);
-    render();
   }
 }
 
@@ -520,7 +432,6 @@ async function handleStartThread(): Promise<void> {
 
   clearError();
   setBusy(true);
-  render();
 
   try {
     const csrfToken = requireCsrfToken();
@@ -532,12 +443,11 @@ async function handleStartThread(): Promise<void> {
       appendEvent(`Thread started: ${threadId}`);
     }
 
-    await loadThreads(workspace.workspaceId, false);
+    await loadThreads(workspace.workspaceId);
   } catch (error: unknown) {
     handleApiError(error);
   } finally {
     setBusy(false);
-    render();
   }
 }
 
@@ -548,23 +458,22 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     return;
   }
 
-  const form = event.currentTarget as HTMLFormElement;
-  const formData = new FormData(form);
+  const formData = new FormData(dom.turnForm);
   const prompt = formData.get("prompt");
 
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
     setError("Prompt is required");
-    render();
     return;
   }
 
   const normalizedPrompt = prompt.trim();
-  state.draftPrompt = normalizedPrompt;
+  store.patchSlice("stream", {
+    draftPrompt: normalizedPrompt
+  });
 
   clearError();
   setBusy(true);
   appendEvent(`Prompt: ${normalizedPrompt}`);
-  render();
 
   try {
     const csrfToken = requireCsrfToken();
@@ -575,7 +484,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
           text: normalizedPrompt
         }
       ],
-      ...(state.selectedThreadId ? { threadId: state.selectedThreadId } : {})
+      ...(store.getState().thread.selectedThreadId ? { threadId: store.getState().thread.selectedThreadId } : {})
     };
 
     const result = await apiClient.startTurn(workspace.workspaceId, csrfToken, payload);
@@ -585,14 +494,17 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     }
 
     appendEvent("Turn started");
-    state.draftPrompt = "";
-    form.reset();
-    await loadThreads(workspace.workspaceId, false);
+    dom.turnForm.reset();
+
+    store.patchSlice("stream", {
+      draftPrompt: ""
+    });
+
+    await loadThreads(workspace.workspaceId);
   } catch (error: unknown) {
     handleApiError(error);
   } finally {
     setBusy(false);
-    render();
   }
 }
 
@@ -604,14 +516,13 @@ async function handleInterruptTurn(): Promise<void> {
 
   clearError();
   setBusy(true);
-  render();
 
   try {
     const csrfToken = requireCsrfToken();
     const payload: Record<string, unknown> = {};
 
-    if (state.selectedThreadId) {
-      payload.threadId = state.selectedThreadId;
+    if (store.getState().thread.selectedThreadId) {
+      payload.threadId = store.getState().thread.selectedThreadId;
     }
 
     await apiClient.interruptTurn(workspace.workspaceId, csrfToken, payload);
@@ -620,7 +531,6 @@ async function handleInterruptTurn(): Promise<void> {
     handleApiError(error);
   } finally {
     setBusy(false);
-    render();
   }
 }
 
@@ -632,118 +542,119 @@ function handleReconnectEvents(): void {
 
   appendEvent("Manual reconnect requested");
   connectWorkspaceEvents(workspace.workspaceId, true);
-  render();
+}
+
+function handleWorkspaceSelection(workspaceId: string): void {
+  if (workspaceId === store.getState().workspace.selectedWorkspaceId) {
+    return;
+  }
+
+  setSelectedWorkspaceId(workspaceId);
+  store.patchSlice("thread", {
+    threads: [],
+    selectedThreadId: null
+  });
+  setSelectedThreadId(null);
+
+  clearError();
+  store.patchSlice("stream", {
+    events: []
+  });
+
+  void loadThreads(workspaceId)
+    .then(() => {
+      connectWorkspaceEvents(workspaceId, true);
+    })
+    .catch((error: unknown) => {
+      handleApiError(error);
+    });
+}
+
+function handleThreadSelection(threadId: string): void {
+  setSelectedThreadId(threadId);
+  appendEvent(`Selected thread: ${threadId}`);
 }
 
 function attachHandlers(): void {
-  const loginForm = document.querySelector<HTMLFormElement>("#login-form");
-  if (loginForm) {
-    loginForm.addEventListener("submit", (event) => {
-      void handleLoginSubmit(event);
-    });
-  }
-
-  const workspaceForm = document.querySelector<HTMLFormElement>("#workspace-form");
-  if (workspaceForm) {
-    workspaceForm.addEventListener("submit", (event) => {
-      void handleWorkspaceCreate(event);
-    });
-  }
-
-  const turnForm = document.querySelector<HTMLFormElement>("#turn-form");
-  if (turnForm) {
-    turnForm.addEventListener("submit", (event) => {
-      void handleTurnSubmit(event);
-    });
-  }
-
-  const turnPromptInput = document.querySelector<HTMLTextAreaElement>("#turn-prompt");
-  turnPromptInput?.addEventListener("input", () => {
-    state.draftPrompt = turnPromptInput.value;
+  dom.loginForm.addEventListener("submit", (event) => {
+    void handleLoginSubmit(event);
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-action='select-workspace']").forEach((button) => {
-    button.addEventListener("click", () => {
-      const workspaceId = button.dataset.workspaceId;
-      if (!workspaceId || workspaceId === state.selectedWorkspaceId) {
-        return;
-      }
+  dom.workspaceForm.addEventListener("submit", (event) => {
+    void handleWorkspaceCreate(event);
+  });
 
-      setSelectedWorkspaceId(workspaceId);
-      setSelectedThreadId(null);
-      clearError();
-      state.events = [];
-      render();
+  dom.turnForm.addEventListener("submit", (event) => {
+    void handleTurnSubmit(event);
+  });
 
-      void loadThreads(workspaceId)
-        .then(() => {
-          connectWorkspaceEvents(workspaceId, true);
-        })
-        .catch((error: unknown) => {
-          handleApiError(error);
-          render();
-        });
+  dom.turnPromptInput.addEventListener("input", () => {
+    store.patchSlice("stream", {
+      draftPrompt: dom.turnPromptInput.value
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>("[data-action='select-thread']").forEach((button) => {
-    button.addEventListener("click", () => {
-      const threadId = button.dataset.threadId;
-      if (!threadId) {
-        return;
-      }
+  dom.workspaceList.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const button = target.closest<HTMLButtonElement>("button[data-workspace-id]");
 
-      setSelectedThreadId(threadId);
-      appendEvent(`Selected thread: ${threadId}`);
-      render();
-    });
-  });
-
-  const refreshWorkspacesButton = document.querySelector<HTMLButtonElement>("[data-action='refresh-workspaces']");
-  refreshWorkspacesButton?.addEventListener("click", () => {
-    void loadWorkspaces().catch((error: unknown) => {
-      handleApiError(error);
-      render();
-    });
-  });
-
-  const reconnectEventsButton = document.querySelector<HTMLButtonElement>("[data-action='reconnect-events']");
-  reconnectEventsButton?.addEventListener("click", () => {
-    handleReconnectEvents();
-  });
-
-  const refreshThreadsButton = document.querySelector<HTMLButtonElement>("[data-action='refresh-threads']");
-  refreshThreadsButton?.addEventListener("click", () => {
-    if (!state.selectedWorkspaceId) {
+    const workspaceId = button?.dataset.workspaceId;
+    if (!workspaceId) {
       return;
     }
 
-    void loadThreads(state.selectedWorkspaceId).catch((error: unknown) => {
+    handleWorkspaceSelection(workspaceId);
+  });
+
+  dom.threadList.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const button = target.closest<HTMLButtonElement>("button[data-thread-id]");
+
+    const threadId = button?.dataset.threadId;
+    if (!threadId) {
+      return;
+    }
+
+    handleThreadSelection(threadId);
+  });
+
+  dom.refreshWorkspacesButton.addEventListener("click", () => {
+    void loadWorkspaces().catch((error: unknown) => {
       handleApiError(error);
-      render();
     });
   });
 
-  const startThreadButton = document.querySelector<HTMLButtonElement>("[data-action='start-thread']");
-  startThreadButton?.addEventListener("click", () => {
+  dom.reconnectEventsButton.addEventListener("click", () => {
+    handleReconnectEvents();
+  });
+
+  dom.refreshThreadsButton.addEventListener("click", () => {
+    const selectedWorkspaceId = store.getState().workspace.selectedWorkspaceId;
+    if (!selectedWorkspaceId) {
+      return;
+    }
+
+    void loadThreads(selectedWorkspaceId).catch((error: unknown) => {
+      handleApiError(error);
+    });
+  });
+
+  dom.startThreadButton.addEventListener("click", () => {
     void handleStartThread();
   });
 
-  const interruptTurnButton = document.querySelector<HTMLButtonElement>("[data-action='interrupt-turn']");
-  interruptTurnButton?.addEventListener("click", () => {
+  dom.interruptTurnButton.addEventListener("click", () => {
     void handleInterruptTurn();
   });
 
-  const logoutButton = document.querySelector<HTMLButtonElement>("[data-action='logout']");
-  logoutButton?.addEventListener("click", () => {
+  dom.logoutButton.addEventListener("click", () => {
     void handleLogout();
   });
 }
 
-void initializeSession()
-  .catch((error: unknown) => {
-    handleApiError(error);
-  })
-  .finally(() => {
-    render();
-  });
+attachHandlers();
+renderer.renderAll();
+
+void initializeSession().catch((error: unknown) => {
+  handleApiError(error);
+});
