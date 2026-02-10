@@ -9,12 +9,20 @@ import {
 } from "../../src/lib/normalize.js";
 
 describe("normalizeThreadList", () => {
-  it("prefers metadata records when available", () => {
+  it("prefers metadata records when available and sorts by activity", () => {
     const response: ThreadListResponse = {
       remote: {
         threads: [{ id: "remote-thread" }]
       },
       metadata: [
+        {
+          threadId: "meta-thread-old",
+          workspaceId: "workspace-1",
+          title: "Old Metadata Thread",
+          archived: false,
+          lastSeenAt: "2026-02-09T00:00:00.000Z",
+          rawPayload: { id: "meta-thread-old" }
+        },
         {
           threadId: "meta-thread",
           workspaceId: "workspace-1",
@@ -30,7 +38,14 @@ describe("normalizeThreadList", () => {
       {
         threadId: "meta-thread",
         title: "Metadata Thread",
-        archived: true
+        archived: true,
+        lastSeenAt: "2026-02-10T00:00:00.000Z"
+      },
+      {
+        threadId: "meta-thread-old",
+        title: "Old Metadata Thread",
+        archived: false,
+        lastSeenAt: "2026-02-09T00:00:00.000Z"
       }
     ]);
   });
@@ -42,12 +57,14 @@ describe("normalizeThreadList", () => {
           {
             id: "thread-a",
             title: "Thread A",
-            archived: false
+            archived: false,
+            lastSeenAt: "2026-02-09T08:30:00.000Z"
           },
           {
             threadId: "thread-b",
             preview: "Preview B",
-            archived: true
+            archived: true,
+            updatedAt: "2026-02-10T07:45:00.000Z"
           },
           {
             malformed: true
@@ -59,14 +76,16 @@ describe("normalizeThreadList", () => {
 
     expect(normalizeThreadList(response)).toEqual([
       {
-        threadId: "thread-a",
-        title: "Thread A",
-        archived: false
-      },
-      {
         threadId: "thread-b",
         title: "Preview B",
-        archived: true
+        archived: true,
+        lastSeenAt: "2026-02-10T07:45:00.000Z"
+      },
+      {
+        threadId: "thread-a",
+        title: "Thread A",
+        archived: false,
+        lastSeenAt: "2026-02-09T08:30:00.000Z"
       }
     ]);
   });

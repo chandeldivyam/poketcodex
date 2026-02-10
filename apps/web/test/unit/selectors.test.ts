@@ -35,7 +35,8 @@ function createState(): AppState {
         {
           threadId: "thread-1",
           title: "Thread One",
-          archived: false
+          archived: false,
+          lastSeenAt: "2026-02-10T00:00:00.000Z"
         }
       ],
       selectedThreadId: "thread-1"

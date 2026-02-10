@@ -300,22 +300,57 @@ form {
   gap: 0.2rem;
 }
 
+.list-item-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
 .workspace-item strong,
 .thread-item strong {
   font-size: 0.91rem;
 }
 
-.workspace-item span,
-.thread-item span {
+.list-item-path,
+.list-item-id {
   font-size: 0.77rem;
   color: var(--ink-muted);
   line-break: anywhere;
+}
+
+.list-item-meta {
+  font-size: 0.72rem;
+  color: #5b726d;
 }
 
 .workspace-item.is-selected,
 .thread-item.is-selected {
   border-color: #78b5a9;
   background: var(--accent-soft);
+}
+
+.workspace-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid transparent;
+}
+
+.workspace-badge-trusted {
+  border-color: #92c6ae;
+  background: #e2f3eb;
+  color: #1f5c49;
+}
+
+.workspace-badge-restricted {
+  border-color: #e4be9c;
+  background: #fff2e4;
+  color: #8a4f1a;
 }
 
 .thread-badge {

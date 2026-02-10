@@ -46,6 +46,45 @@ function formatElapsed(startedAtMs: number): string {
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
+function formatRelativeTimestamp(timestamp: string | null | undefined): string | null {
+  if (!timestamp) {
+    return null;
+  }
+
+  const timestampMs = Date.parse(timestamp);
+  if (!Number.isFinite(timestampMs)) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1_000));
+  if (elapsedSeconds < 45) {
+    return "just now";
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 30) {
+    return `${elapsedDays}d ago`;
+  }
+
+  const elapsedMonths = Math.floor(elapsedDays / 30);
+  if (elapsedMonths < 12) {
+    return `${elapsedMonths}mo ago`;
+  }
+
+  const elapsedYears = Math.floor(elapsedMonths / 12);
+  return `${elapsedYears}y ago`;
+}
+
 function getTurnStatusPresentation(phase: TurnExecutionPhase, startedAtMs: number | null): TurnStatusPresentation {
   if (phase === "submitting") {
     const suffix = startedAtMs !== null ? ` (${formatElapsed(startedAtMs)})` : "";
@@ -323,10 +362,24 @@ export class AppRenderer {
       const title = document.createElement("strong");
       title.textContent = workspace.displayName;
 
+      const titleRow = document.createElement("div");
+      titleRow.className = "list-item-title-row";
+
+      const trustBadge = document.createElement("span");
+      trustBadge.className = `workspace-badge workspace-badge-${workspace.trusted ? "trusted" : "restricted"}`;
+      trustBadge.textContent = workspace.trusted ? "Trusted" : "Restricted";
+      titleRow.append(title, trustBadge);
+
       const path = document.createElement("span");
+      path.className = "list-item-path";
       path.textContent = workspace.absolutePath;
 
-      button.append(title, path);
+      const metadata = document.createElement("span");
+      metadata.className = "list-item-meta";
+      const updatedLabel = formatRelativeTimestamp(workspace.updatedAt);
+      metadata.textContent = updatedLabel ? `Updated ${updatedLabel}` : "Update time unavailable";
+
+      button.append(titleRow, path, metadata);
       fragment.append(button);
     }
 
@@ -352,17 +405,27 @@ export class AppRenderer {
       const title = document.createElement("strong");
       title.textContent = thread.title;
 
-      const threadId = document.createElement("span");
-      threadId.textContent = thread.threadId;
-
-      button.append(title, threadId);
+      const titleRow = document.createElement("div");
+      titleRow.className = "list-item-title-row";
+      titleRow.append(title);
 
       if (thread.archived) {
         const badge = document.createElement("span");
         badge.className = "thread-badge";
         badge.textContent = "Archived";
-        button.append(badge);
+        titleRow.append(badge);
       }
+
+      const threadId = document.createElement("span");
+      threadId.className = "list-item-id";
+      threadId.textContent = thread.threadId;
+
+      const metadata = document.createElement("span");
+      metadata.className = "list-item-meta";
+      const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
+      metadata.textContent = lastSeenLabel ? `Last seen ${lastSeenLabel}` : "No recent activity";
+
+      button.append(titleRow, threadId, metadata);
 
       fragment.append(button);
     }

@@ -4,6 +4,7 @@ export interface ThreadListItem {
   threadId: string;
   title: string;
   archived: boolean;
+  lastSeenAt: string | null;
 }
 
 export interface FormatWorkspaceEventOptions {
@@ -53,11 +54,49 @@ function extractThreadIdFromUnknown(value: unknown): string | null {
   return null;
 }
 
+function normalizeThreadTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  const timestampMs = Date.parse(value);
+  if (!Number.isFinite(timestampMs)) {
+    return null;
+  }
+
+  return value;
+}
+
+function threadTimestampMs(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) ? timestampMs : 0;
+}
+
+function sortThreadsByActivity(threads: ThreadListItem[]): ThreadListItem[] {
+  return [...threads].sort((left, right) => {
+    const timestampDelta = threadTimestampMs(right.lastSeenAt) - threadTimestampMs(left.lastSeenAt);
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
+
+    if (left.archived !== right.archived) {
+      return left.archived ? 1 : -1;
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+}
+
 function mapMetadataThread(record: ThreadMetadataRecord): ThreadListItem {
   return {
     threadId: record.threadId,
     title: record.title || record.threadId,
-    archived: record.archived
+    archived: record.archived,
+    lastSeenAt: normalizeThreadTimestamp(record.lastSeenAt)
   };
 }
 
@@ -306,7 +345,7 @@ function formatSequencePrefix(sequence: number | null): string {
 
 export function normalizeThreadList(response: ThreadListResponse): ThreadListItem[] {
   if (response.metadata.length > 0) {
-    return response.metadata.map(mapMetadataThread);
+    return sortThreadsByActivity(response.metadata.map(mapMetadataThread));
   }
 
   const remote = response.remote;
@@ -321,15 +360,23 @@ export function normalizeThreadList(response: ThreadListResponse): ThreadListIte
       ? remotePayload.data
       : [];
 
-  return rawThreads
+  const normalizedThreads = rawThreads
     .map((threadPayload) => {
       const threadId = extractThreadIdFromUnknown(threadPayload);
       if (!threadId) {
         return null;
       }
 
-      const thread = threadPayload as { title?: unknown; preview?: unknown; archived?: unknown };
+      const thread = threadPayload as {
+        title?: unknown;
+        preview?: unknown;
+        archived?: unknown;
+        lastSeenAt?: unknown;
+        updatedAt?: unknown;
+        createdAt?: unknown;
+      };
       const titleCandidate = typeof thread.title === "string" ? thread.title : thread.preview;
+      const lastSeenAt = normalizeThreadTimestamp(thread.lastSeenAt ?? thread.updatedAt ?? thread.createdAt);
 
       return {
         threadId,
@@ -337,10 +384,13 @@ export function normalizeThreadList(response: ThreadListResponse): ThreadListIte
           typeof titleCandidate === "string" && titleCandidate.trim().length > 0
             ? titleCandidate
             : threadId,
-        archived: thread.archived === true
+        archived: thread.archived === true,
+        lastSeenAt
       } satisfies ThreadListItem;
     })
     .filter((thread): thread is ThreadListItem => thread !== null);
+
+  return sortThreadsByActivity(normalizedThreads);
 }
 
 export function extractThreadIdFromTurnResult(result: unknown): string | null {
