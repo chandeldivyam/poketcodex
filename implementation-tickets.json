@@ -1,0 +1,1309 @@
+{
+  "meta": {
+    "project": "codex-mobile-web-wsl",
+    "version": "1.0.0",
+    "generated_on": "2026-02-10",
+    "source_plan": "technical-implementation-plan.md",
+    "primary_objective": "Deliver a secure, mobile-friendly Codex web app on Windows + WSL with Tailscale-only remote access, terminal support, and strong reliability gates."
+  },
+  "workflow": {
+    "status_flow": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "in_review",
+      "done"
+    ],
+    "definition_of_done_global": [
+      "Code merged to main branch with review approval.",
+      "All required automated tests for the ticket pass in CI.",
+      "No open P0/P1 defects linked to the ticket.",
+      "Operational notes or docs updated if behavior changed."
+    ],
+    "phase_advance_rule": "A phase can advance only when all required tickets are done and the phase gate test suites pass."
+  },
+  "tooling_assumptions": {
+    "package_manager": "pnpm",
+    "runtime": "node-20+",
+    "backend_test_stack": [
+      "vitest",
+      "supertest",
+      "playwright",
+      "k6"
+    ],
+    "security_tools": [
+      "npm audit",
+      "trivy",
+      "owasp-zap-baseline"
+    ]
+  },
+  "global_quality_gates": {
+    "required_before_any_phase_close": [
+      "lint passes",
+      "typecheck passes",
+      "unit tests pass",
+      "integration tests pass",
+      "no critical vulnerabilities in dependency scan"
+    ],
+    "coverage_targets": {
+      "backend_lines_pct_min": 80,
+      "frontend_lines_pct_min": 70
+    },
+    "defect_policy": {
+      "max_open_p0": 0,
+      "max_open_p1": 0,
+      "max_open_p2": 5
+    }
+  },
+  "phases": [
+    {
+      "id": "PHASE-0",
+      "name": "Foundation",
+      "goal": "Establish repository structure, baseline services, and CI quality controls.",
+      "estimated_duration_days": 3,
+      "entry_criteria": [
+        "technical-implementation-plan.md approved for execution."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P0-T001",
+          "P0-T002",
+          "P0-T003",
+          "P0-T004",
+          "P0-T005"
+        ],
+        "required_test_runs": [
+          {
+            "name": "foundation-ci",
+            "commands": [
+              "pnpm lint",
+              "pnpm typecheck",
+              "pnpm test:unit",
+              "pnpm test:integration --filter foundation"
+            ],
+            "pass_criteria": "All commands return exit code 0."
+          },
+          {
+            "name": "bootstrap-smoke",
+            "commands": [
+              "pnpm dev:backend &",
+              "curl -f http://127.0.0.1:8787/api/health"
+            ],
+            "pass_criteria": "Health endpoint responds 200 with expected JSON."
+          }
+        ],
+        "release_blockers": [
+          "Missing env validation for required secrets.",
+          "Auth middleware not enforced on mutating endpoints."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P0-T001",
+          "title": "Scaffold monorepo and baseline project structure",
+          "priority": "P0",
+          "estimate_days": 0.5,
+          "dependencies": [],
+          "implementation_steps": [
+            "Create workspace layout: apps/backend, apps/web, packages/shared, infra, docs.",
+            "Add root scripts for lint/typecheck/test/build.",
+            "Add baseline tsconfig and eslint/prettier config."
+          ],
+          "deliverables": [
+            "Monorepo structure committed.",
+            "Root workspace config and scripts."
+          ],
+          "test_plan": {
+            "unit": [
+              "Validate shared package exports compile via `pnpm -r typecheck`."
+            ],
+            "integration": [
+              "Run `pnpm install` and `pnpm -r build` successfully from clean checkout."
+            ],
+            "manual": [
+              "Verify `pnpm dev` boots backend and web concurrently."
+            ]
+          },
+          "acceptance_criteria": [
+            "A new contributor can clone and run lint/typecheck/test without manual setup beyond documented prerequisites."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P0-T002",
+          "title": "Implement environment and config validation layer",
+          "priority": "P0",
+          "estimate_days": 0.5,
+          "dependencies": [
+            "P0-T001"
+          ],
+          "implementation_steps": [
+            "Define strict schema for env vars (ports, secrets, allowed roots, auth settings).",
+            "Fail fast at startup on invalid/missing critical values.",
+            "Provide `.env.example` and config docs."
+          ],
+          "deliverables": [
+            "Config loader module with schema validation.",
+            "Updated `.env.example` and docs."
+          ],
+          "test_plan": {
+            "unit": [
+              "Test invalid port values, missing required secrets, malformed allowed roots."
+            ],
+            "integration": [
+              "Start backend with valid env and expect success.",
+              "Start backend with invalid env and expect deterministic exit + clear error."
+            ],
+            "manual": [
+              "Verify startup log redacts secret values."
+            ]
+          },
+          "acceptance_criteria": [
+            "Backend cannot run with unsafe or malformed config."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P0-T003",
+          "title": "Add baseline observability and structured logging",
+          "priority": "P1",
+          "estimate_days": 0.5,
+          "dependencies": [
+            "P0-T001"
+          ],
+          "implementation_steps": [
+            "Introduce structured JSON logging with request correlation IDs.",
+            "Add log levels and redact policy for secrets.",
+            "Expose basic metrics endpoint for service health stats."
+          ],
+          "deliverables": [
+            "Logger utility and request middleware.",
+            "Metrics endpoint (`/api/metrics` or equivalent)."
+          ],
+          "test_plan": {
+            "unit": [
+              "Validate redaction behavior for secret-like keys."
+            ],
+            "integration": [
+              "Call health endpoint and assert correlation ID appears in logs.",
+              "Assert metrics endpoint is reachable and parseable."
+            ]
+          },
+          "acceptance_criteria": [
+            "All API requests emit structured logs with correlation IDs."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P0-T004",
+          "title": "Implement session-based auth and security middleware baseline",
+          "priority": "P0",
+          "estimate_days": 1,
+          "dependencies": [
+            "P0-T002"
+          ],
+          "implementation_steps": [
+            "Implement login/session issuance for single-user mode.",
+            "Add middleware for auth checks on mutating endpoints.",
+            "Configure secure cookies and CSRF token primitives."
+          ],
+          "deliverables": [
+            "Auth routes (`/api/auth/login`, `/api/auth/logout`, `/api/auth/session`).",
+            "Auth middleware and CSRF helper."
+          ],
+          "test_plan": {
+            "unit": [
+              "Token generation/validation tests.",
+              "Session expiration handling tests."
+            ],
+            "integration": [
+              "Unauthenticated POST requests return 401/403.",
+              "Authenticated flow succeeds with valid CSRF token."
+            ],
+            "security": [
+              "Verify cookie flags: HttpOnly, Secure, SameSite."
+            ]
+          },
+          "acceptance_criteria": [
+            "No mutating API route can be used without valid session and CSRF."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P0-T005",
+          "title": "Set up CI pipeline with quality gates",
+          "priority": "P0",
+          "estimate_days": 0.5,
+          "dependencies": [
+            "P0-T001",
+            "P0-T002",
+            "P0-T004"
+          ],
+          "implementation_steps": [
+            "Configure CI jobs for lint, typecheck, unit, integration, and dependency scans.",
+            "Enforce branch protection required checks.",
+            "Publish test reports and coverage artifacts."
+          ],
+          "deliverables": [
+            "CI workflow files.",
+            "Coverage and test summary artifact upload."
+          ],
+          "test_plan": {
+            "integration": [
+              "Trigger CI on PR and confirm all required jobs execute.",
+              "Introduce failing test and verify CI blocks merge."
+            ]
+          },
+          "acceptance_criteria": [
+            "Main branch merge is blocked unless required checks pass."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "PHASE-1",
+      "name": "Core Codex Integration",
+      "goal": "Enable stable app-server handshake, workspace operations, threads, turns, and streaming UI.",
+      "estimated_duration_days": 7,
+      "entry_criteria": [
+        "PHASE-0 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P1-T101",
+          "P1-T102",
+          "P1-T103",
+          "P1-T104",
+          "P1-T105"
+        ],
+        "required_test_runs": [
+          {
+            "name": "app-server-contract-tests",
+            "commands": [
+              "pnpm test:integration --filter app-server-contract"
+            ],
+            "pass_criteria": "Handshake, request-response correlation, and notification routing tests all pass."
+          },
+          {
+            "name": "mobile-chat-e2e-smoke",
+            "commands": [
+              "pnpm test:e2e:mobile --grep @phase1"
+            ],
+            "pass_criteria": "User can open workspace, start thread, send turn, and receive streaming output."
+          },
+          {
+            "name": "crash-recovery-smoke",
+            "commands": [
+              "pnpm test:integration --filter process-recovery"
+            ],
+            "pass_criteria": "If app-server subprocess is killed mid-turn, manager recovers and reports error state cleanly."
+          }
+        ],
+        "release_blockers": [
+          "Any lost or duplicated streamed delta in a normal turn.",
+          "Workspace path guard bypass found."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P1-T101",
+          "title": "Implement app-server process manager with strict initialize handshake",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P0-T004"
+          ],
+          "implementation_steps": [
+            "Spawn `codex app-server --listen stdio://` per workspace context.",
+            "Implement initialize -> initialized handshake sequence.",
+            "Implement request ID correlation map and timeout handling.",
+            "Handle server notifications and server-initiated requests."
+          ],
+          "deliverables": [
+            "AppServerManager module.",
+            "Typed protocol adapters for key v2 methods."
+          ],
+          "test_plan": {
+            "unit": [
+              "Handshake order validation tests.",
+              "Request timeout/cancellation tests.",
+              "ID collision and stale response handling tests."
+            ],
+            "integration": [
+              "Real subprocess test for initialize success path.",
+              "Negative test: call method before initialize should raise protocol error."
+            ]
+          },
+          "acceptance_criteria": [
+            "Manager handles startup, RPC, and shutdown without leaked processes."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P1-T102",
+          "title": "Build workspace CRUD and filesystem boundary enforcement",
+          "priority": "P0",
+          "estimate_days": 1,
+          "dependencies": [
+            "P0-T002"
+          ],
+          "implementation_steps": [
+            "Create workspace APIs and SQLite persistence.",
+            "Implement canonicalization + allowlist root checks.",
+            "Reject symlink traversal outside allowed roots."
+          ],
+          "deliverables": [
+            "`/api/workspaces` endpoints.",
+            "Workspace guard utility with tests."
+          ],
+          "test_plan": {
+            "unit": [
+              "Path canonicalization and traversal attack tests.",
+              "Symlink escape rejection tests."
+            ],
+            "integration": [
+              "Create/list/delete workspace via API with auth.",
+              "Attempt forbidden path and verify rejection."
+            ],
+            "security": [
+              "Fuzz path payloads (`..`, mixed separators, encoded traversal)."
+            ]
+          },
+          "acceptance_criteria": [
+            "Only approved filesystem roots can be registered as workspaces."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P1-T103",
+          "title": "Implement thread lifecycle API wrappers",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P1-T101",
+            "P1-T102"
+          ],
+          "implementation_steps": [
+            "Implement wrapper methods for thread/start, thread/resume, thread/list, thread/read, thread/archive.",
+            "Normalize thread metadata into app DB.",
+            "Add REST endpoints for frontend consumption."
+          ],
+          "deliverables": [
+            "Thread service and endpoints.",
+            "Thread metadata sync process."
+          ],
+          "test_plan": {
+            "unit": [
+              "Response normalization mapping tests."
+            ],
+            "integration": [
+              "Create/resume/archive flow against live app-server subprocess.",
+              "Idempotency checks on repeated archive/read operations."
+            ]
+          },
+          "acceptance_criteria": [
+            "Thread operations are stable and state-consistent across backend restarts."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P1-T104",
+          "title": "Implement turn APIs and real-time event streaming bridge",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P1-T101",
+            "P1-T103"
+          ],
+          "implementation_steps": [
+            "Implement turn/start, turn/steer, turn/interrupt wrappers.",
+            "Bridge app-server notifications to frontend WS events.",
+            "Guarantee ordered event delivery per turn stream."
+          ],
+          "deliverables": [
+            "Turn endpoints.",
+            "WebSocket event broker for item/delta lifecycle."
+          ],
+          "test_plan": {
+            "unit": [
+              "Event ordering and dedupe logic tests."
+            ],
+            "integration": [
+              "Stream a long response and verify reconstructed message matches final item.",
+              "Interrupt in-flight turn and verify terminal status is `interrupted`."
+            ],
+            "performance": [
+              "Stream 5 concurrent turns (test harness) and verify no dropped WS frames."
+            ]
+          },
+          "acceptance_criteria": [
+            "Frontend receives complete ordered stream for turns under normal network conditions."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P1-T105",
+          "title": "Deliver mobile-first chat UI with reconnect support",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P1-T103",
+            "P1-T104"
+          ],
+          "implementation_steps": [
+            "Build mobile workspace/thread selector UI.",
+            "Render item timeline and deltas incrementally.",
+            "Implement reconnect and stream resubscribe behavior."
+          ],
+          "deliverables": [
+            "Functional mobile chat interface.",
+            "Reconnection UX (status indicator + retry)."
+          ],
+          "test_plan": {
+            "e2e_mobile": [
+              "Open app on mobile viewport, create thread, send prompt, receive response.",
+              "Simulate network drop and verify automatic reconnect + no UI crash."
+            ],
+            "manual": [
+              "Validate touch target sizing and keyboard behavior on phone."
+            ]
+          },
+          "acceptance_criteria": [
+            "Core chat workflow is usable on phone with resilient reconnect behavior."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "PHASE-2",
+      "name": "Multi-Workspace + Approvals",
+      "goal": "Support concurrent workspace sessions and robust approval workflows.",
+      "estimated_duration_days": 7,
+      "entry_criteria": [
+        "PHASE-1 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P2-T201",
+          "P2-T202",
+          "P2-T203",
+          "P2-T204",
+          "P2-T205"
+        ],
+        "required_test_runs": [
+          {
+            "name": "multi-workspace-concurrency",
+            "commands": [
+              "pnpm test:integration --filter multi-workspace"
+            ],
+            "pass_criteria": "Three workspaces can run isolated turns without event cross-talk."
+          },
+          {
+            "name": "approval-e2e",
+            "commands": [
+              "pnpm test:e2e --grep @approval"
+            ],
+            "pass_criteria": "Accept, decline, and timeout flows all behave correctly."
+          },
+          {
+            "name": "state-recovery",
+            "commands": [
+              "pnpm test:integration --filter restart-recovery"
+            ],
+            "pass_criteria": "Service restarts preserve DB metadata and recover active workspace managers safely."
+          }
+        ],
+        "release_blockers": [
+          "Approval request response mapped to wrong turn/item.",
+          "Cross-workspace event leak."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P2-T201",
+          "title": "Implement multi-workspace process pool and lifecycle controls",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P1-T101",
+            "P1-T102"
+          ],
+          "implementation_steps": [
+            "Create workspace manager registry with LRU shutdown for idle managers.",
+            "Add bounded process limits and queueing policy.",
+            "Add health probes for each manager."
+          ],
+          "deliverables": [
+            "Multi-workspace manager pool.",
+            "Per-workspace health state endpoint."
+          ],
+          "test_plan": {
+            "unit": [
+              "LRU and idle timeout behavior tests."
+            ],
+            "integration": [
+              "Open 3+ workspaces and run independent turns concurrently.",
+              "Validate capped process behavior when max managers reached."
+            ]
+          },
+          "acceptance_criteria": [
+            "Workspace sessions are isolated and managed within configured limits."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P2-T202",
+          "title": "Implement approval center backend and UI",
+          "priority": "P0",
+          "estimate_days": 2,
+          "dependencies": [
+            "P1-T104",
+            "P1-T105"
+          ],
+          "implementation_steps": [
+            "Handle server requests for command execution approval, file change approval, and tool user input.",
+            "Build pending approvals queue in backend + frontend.",
+            "Support accept/decline and tool input submission with timeout behavior."
+          ],
+          "deliverables": [
+            "Approval API and WS handlers.",
+            "Mobile approval UI panel."
+          ],
+          "test_plan": {
+            "unit": [
+              "Approval routing and timeout policy tests."
+            ],
+            "integration": [
+              "Simulate command/file approval requests and verify correct response wiring."
+            ],
+            "e2e_mobile": [
+              "User receives approval prompt, accepts, and sees successful completion.",
+              "User declines and sees declined terminal state."
+            ],
+            "security": [
+              "Reject approval responses from unauthorized sessions."
+            ]
+          },
+          "acceptance_criteria": [
+            "All approval request types are actionable from mobile and correctly correlated."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P2-T203",
+          "title": "Persist thread/workspace metadata and sync jobs",
+          "priority": "P1",
+          "estimate_days": 1,
+          "dependencies": [
+            "P1-T103"
+          ],
+          "implementation_steps": [
+            "Finalize schema for workspaces/threads and migration strategy.",
+            "Add sync routine from app-server thread/list into local DB cache.",
+            "Track `updated_at`, archived state, and last active metadata."
+          ],
+          "deliverables": [
+            "DB migrations and repository layer.",
+            "Metadata sync background job."
+          ],
+          "test_plan": {
+            "unit": [
+              "Repository CRUD tests.",
+              "Migration compatibility tests."
+            ],
+            "integration": [
+              "Restart service and verify metadata remains consistent."
+            ]
+          },
+          "acceptance_criteria": [
+            "Thread history is quickly browsable without inconsistency after restart."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P2-T204",
+          "title": "Implement failure recovery and restart policies",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P2-T201"
+          ],
+          "implementation_steps": [
+            "Add retry with exponential backoff/jitter for app-server process crashes.",
+            "Create degraded states and user-visible recovery messages.",
+            "Prevent restart storms with circuit breaker thresholds."
+          ],
+          "deliverables": [
+            "Recovery manager with policy config.",
+            "Degraded state telemetry."
+          ],
+          "test_plan": {
+            "integration": [
+              "Kill subprocess repeatedly and verify backoff progression.",
+              "Verify circuit breaker opens after configured failure threshold."
+            ],
+            "manual": [
+              "Observe user-facing error banners for degraded workspace."
+            ]
+          },
+          "acceptance_criteria": [
+            "Backend recovers from transient failures without uncontrolled restart loops."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P2-T205",
+          "title": "Improve mobile UX for multi-workspace state and errors",
+          "priority": "P2",
+          "estimate_days": 1,
+          "dependencies": [
+            "P2-T201",
+            "P2-T202"
+          ],
+          "implementation_steps": [
+            "Add workspace status badges and queue indicators.",
+            "Add clear error/retry affordances for failed turns and approvals.",
+            "Persist last selected workspace/thread in client storage."
+          ],
+          "deliverables": [
+            "Enhanced stateful mobile UX.",
+            "Error and retry UX patterns."
+          ],
+          "test_plan": {
+            "e2e_mobile": [
+              "Switch across workspaces and verify context isolation in UI.",
+              "Trigger errors and verify retry path works."
+            ]
+          },
+          "acceptance_criteria": [
+            "Users can reliably navigate multi-workspace flows on mobile without confusion."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "PHASE-3",
+      "name": "Terminal Subsystem",
+      "goal": "Provide persistent and secure mobile terminal access with reconnect-safe behavior.",
+      "estimated_duration_days": 7,
+      "entry_criteria": [
+        "PHASE-2 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P3-T301",
+          "P3-T302",
+          "P3-T303",
+          "P3-T304",
+          "P3-T305"
+        ],
+        "required_test_runs": [
+          {
+            "name": "terminal-e2e-mobile",
+            "commands": [
+              "pnpm test:e2e:mobile --grep @terminal"
+            ],
+            "pass_criteria": "Create, attach, execute command, detach, and reattach flows pass."
+          },
+          {
+            "name": "terminal-soak",
+            "commands": [
+              "pnpm test:soak:terminal --duration 2h"
+            ],
+            "pass_criteria": "No session loss, memory leak, or stuck I/O streams over soak duration."
+          },
+          {
+            "name": "terminal-security-checks",
+            "commands": [
+              "pnpm test:security --grep terminal-authz"
+            ],
+            "pass_criteria": "Unauthorized access to terminal routes is denied."
+          }
+        ],
+        "release_blockers": [
+          "Terminal sessions are not reconnect-safe.",
+          "Any cross-workspace terminal attach possible."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P3-T301",
+          "title": "Implement tmux-backed terminal session manager",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P2-T201"
+          ],
+          "implementation_steps": [
+            "Integrate tmux session creation/list/kill APIs.",
+            "Map sessions to workspace IDs with ownership checks.",
+            "Add persistent metadata in DB."
+          ],
+          "deliverables": [
+            "TerminalSessionManager service.",
+            "Terminal session persistence schema."
+          ],
+          "test_plan": {
+            "unit": [
+              "Session mapping and ownership checks."
+            ],
+            "integration": [
+              "Create/list/kill tmux session workflows.",
+              "Reattach to existing session after backend restart."
+            ]
+          },
+          "acceptance_criteria": [
+            "Terminal sessions persist independently of browser connection."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P3-T302",
+          "title": "Implement terminal WS protocol for input/output/resize",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P3-T301"
+          ],
+          "implementation_steps": [
+            "Define WS message schema for terminal attach/input/output/resize/heartbeat.",
+            "Implement backpressure handling and output chunking.",
+            "Implement server-side idle timeout and heartbeat disconnect rules."
+          ],
+          "deliverables": [
+            "Terminal websocket gateway.",
+            "Protocol contract docs."
+          ],
+          "test_plan": {
+            "integration": [
+              "Send command input and verify ordered output.",
+              "Resize terminal and verify dimensions apply."
+            ],
+            "performance": [
+              "Burst output test (e.g., `yes | head -n 50000`) without WS crash."
+            ]
+          },
+          "acceptance_criteria": [
+            "Terminal WS remains stable under normal and burst output workloads."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P3-T303",
+          "title": "Build mobile terminal UI",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P3-T302"
+          ],
+          "implementation_steps": [
+            "Integrate xterm-like mobile terminal rendering.",
+            "Add soft keyboard input controls and copy/paste handling.",
+            "Add reconnect and session picker UX."
+          ],
+          "deliverables": [
+            "Terminal mobile view with attach/detach.",
+            "Session picker and status UI."
+          ],
+          "test_plan": {
+            "e2e_mobile": [
+              "Attach terminal, run commands, rotate viewport, continue session.",
+              "Disconnect network and verify reattach path."
+            ],
+            "manual": [
+              "Validate keyboard behavior on iOS and Android browsers."
+            ]
+          },
+          "acceptance_criteria": [
+            "Phone-based terminal interaction is practical for daily use."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P3-T304",
+          "title": "Add terminal authorization and workspace isolation enforcement",
+          "priority": "P0",
+          "estimate_days": 1,
+          "dependencies": [
+            "P3-T301",
+            "P0-T004"
+          ],
+          "implementation_steps": [
+            "Enforce per-session auth checks for all terminal APIs and WS upgrades.",
+            "Enforce workspace ownership checks for terminal attach.",
+            "Add audit logs for terminal create/attach/kill."
+          ],
+          "deliverables": [
+            "Terminal authz middleware.",
+            "Terminal audit event stream."
+          ],
+          "test_plan": {
+            "security": [
+              "Attempt attach with invalid session token and expect rejection.",
+              "Attempt attach to another workspace session and expect rejection."
+            ],
+            "integration": [
+              "Verify authorized user can access only expected sessions."
+            ]
+          },
+          "acceptance_criteria": [
+            "No unauthorized terminal session access is possible."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P3-T305",
+          "title": "Run terminal resilience and soak validation",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P3-T302",
+            "P3-T303",
+            "P3-T304"
+          ],
+          "implementation_steps": [
+            "Create soak scripts for long-lived terminal sessions.",
+            "Capture resource usage over time (CPU/memory/file descriptors).",
+            "Document findings and tune timeouts/buffers."
+          ],
+          "deliverables": [
+            "Soak test scripts and report.",
+            "Tuned defaults for terminal subsystem."
+          ],
+          "test_plan": {
+            "performance": [
+              "2-hour continuous command stream with reconnect interruptions.",
+              "FD leak check before/after soak."
+            ],
+            "manual": [
+              "Verify backend remains responsive during soak."
+            ]
+          },
+          "acceptance_criteria": [
+            "No critical leaks or stability regressions found in soak tests."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "PHASE-4",
+      "name": "Security Hardening",
+      "goal": "Apply production-grade security controls and validate against threat model.",
+      "estimated_duration_days": 7,
+      "entry_criteria": [
+        "PHASE-3 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P4-T401",
+          "P4-T402",
+          "P4-T403",
+          "P4-T404",
+          "P4-T405"
+        ],
+        "required_test_runs": [
+          {
+            "name": "security-suite",
+            "commands": [
+              "pnpm test:security"
+            ],
+            "pass_criteria": "All automated security tests pass."
+          },
+          {
+            "name": "dependency-and-image-scan",
+            "commands": [
+              "pnpm audit --prod",
+              "trivy fs . --severity HIGH,CRITICAL"
+            ],
+            "pass_criteria": "No unresolved critical findings; highs are triaged with mitigations."
+          },
+          {
+            "name": "dast-baseline",
+            "commands": [
+              "owasp-zap-baseline -t http://127.0.0.1:8787 -r zap-report.html"
+            ],
+            "pass_criteria": "No high-risk alerts remain open."
+          }
+        ],
+        "release_blockers": [
+          "Any unauthenticated command execution path exists.",
+          "Critical XSS/CSRF/path traversal vulnerability unresolved."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P4-T401",
+          "title": "Enforce CORS, CSP, CSRF, cookie and header hardening",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P0-T004"
+          ],
+          "implementation_steps": [
+            "Set strict CORS allowlist for Tailscale-served origin only.",
+            "Implement CSP, X-Frame-Options, and referrer policy headers.",
+            "Finalize CSRF checks and secure cookie policy."
+          ],
+          "deliverables": [
+            "Security header middleware.",
+            "Documented browser security policy."
+          ],
+          "test_plan": {
+            "security": [
+              "Cross-origin request attempts from unauthorized origin fail.",
+              "CSRF token omission on POST/PUT/DELETE fails."
+            ],
+            "integration": [
+              "Expected origin works with authenticated requests."
+            ]
+          },
+          "acceptance_criteria": [
+            "Browser-facing attack surface is reduced with strict headers and origin controls."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P4-T402",
+          "title": "Harden auth/session lifecycle and abuse controls",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P0-T004"
+          ],
+          "implementation_steps": [
+            "Add login rate limiting, lockout/backoff policy, and optional MFA hook point.",
+            "Implement session rotation on privilege changes/login.",
+            "Add suspicious activity logging."
+          ],
+          "deliverables": [
+            "Abuse control middleware.",
+            "Session lifecycle policy implementation."
+          ],
+          "test_plan": {
+            "security": [
+              "Brute force simulation triggers rate limit/lockout.",
+              "Expired session cannot call APIs."
+            ],
+            "integration": [
+              "Session rotation invalidates old session token."
+            ]
+          },
+          "acceptance_criteria": [
+            "Auth surface is resistant to basic brute force and replay patterns."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P4-T403",
+          "title": "Enforce safe execution defaults and high-risk mode guardrails",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P2-T202"
+          ],
+          "implementation_steps": [
+            "Default remote sessions to `approvalPolicy=on-request` and workspace-write sandbox.",
+            "Implement explicit high-risk mode toggle with TTL + audit reason.",
+            "Auto-revert high-risk mode after TTL expiration."
+          ],
+          "deliverables": [
+            "Execution policy manager.",
+            "High-risk mode UX + backend enforcement."
+          ],
+          "test_plan": {
+            "unit": [
+              "TTL expiry and auto-revert tests."
+            ],
+            "integration": [
+              "High-risk mode requires explicit action and reason.",
+              "Post-TTL operations revert to safe defaults."
+            ],
+            "security": [
+              "Attempt bypass of high-risk mode gate is rejected."
+            ]
+          },
+          "acceptance_criteria": [
+            "Dangerous execution settings cannot be enabled silently or indefinitely."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P4-T404",
+          "title": "Implement security-focused audit trail and retention policy",
+          "priority": "P1",
+          "estimate_days": 1,
+          "dependencies": [
+            "P3-T304"
+          ],
+          "implementation_steps": [
+            "Log auth events, approval decisions, high-risk mode toggles, terminal lifecycle actions.",
+            "Ensure payload redaction and log integrity metadata.",
+            "Add retention/rotation strategy for audit tables/files."
+          ],
+          "deliverables": [
+            "Audit event schema and logger.",
+            "Retention management job."
+          ],
+          "test_plan": {
+            "unit": [
+              "Redaction tests for sensitive fields."
+            ],
+            "integration": [
+              "Trigger key security actions and verify audit entries."
+            ],
+            "manual": [
+              "Review audit logs for readability and forensic usefulness."
+            ]
+          },
+          "acceptance_criteria": [
+            "Sensitive actions are traceable without exposing secrets."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P4-T405",
+          "title": "Execute threat-model validation and final security signoff",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P4-T401",
+            "P4-T402",
+            "P4-T403",
+            "P4-T404"
+          ],
+          "implementation_steps": [
+            "Create formal threat-model checklist mapped to controls.",
+            "Run automated and manual penetration test checklist.",
+            "Log findings, fixes, and residual risk acceptance."
+          ],
+          "deliverables": [
+            "Security signoff report.",
+            "Residual risk register."
+          ],
+          "test_plan": {
+            "security": [
+              "OWASP Top 10 web checks relevant to this app.",
+              "Privilege escalation and workspace breakout attempts.",
+              "Approval spoofing and replay attack checks."
+            ],
+            "manual": [
+              "End-to-end red team style scenario walkthrough."
+            ]
+          },
+          "acceptance_criteria": [
+            "No unresolved critical/high security issues remain."
+          ],
+          "status": "todo"
+        }
+      ]
+    },
+    {
+      "id": "PHASE-5",
+      "name": "Reliability and Operations",
+      "goal": "Operationalize for daily use with monitoring, backup, runbooks, and controlled release.",
+      "estimated_duration_days": 7,
+      "entry_criteria": [
+        "PHASE-4 gate passed."
+      ],
+      "phase_gate": {
+        "required_ticket_ids": [
+          "P5-T501",
+          "P5-T502",
+          "P5-T503",
+          "P5-T504",
+          "P5-T505"
+        ],
+        "required_test_runs": [
+          {
+            "name": "slo-validation",
+            "commands": [
+              "pnpm test:load --scenario standard",
+              "pnpm test:load --scenario peak"
+            ],
+            "pass_criteria": "SLOs met: p95 turn event latency and reconnect success thresholds."
+          },
+          {
+            "name": "backup-restore-drill",
+            "commands": [
+              "pnpm ops:backup",
+              "pnpm ops:restore --dry-run",
+              "pnpm test:integration --filter restore-validation"
+            ],
+            "pass_criteria": "Restore process reliably reconstructs metadata and service state."
+          },
+          {
+            "name": "incident-drill",
+            "commands": [
+              "pnpm ops:drill --scenario app-server-crash",
+              "pnpm ops:drill --scenario tailscale-outage"
+            ],
+            "pass_criteria": "Runbook steps complete within target recovery times."
+          }
+        ],
+        "release_blockers": [
+          "No validated restore path.",
+          "No runbook for app-server crash and auth lockout events."
+        ]
+      },
+      "tickets": [
+        {
+          "id": "P5-T501",
+          "title": "Add metrics dashboards and SLO alerting",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P0-T003"
+          ],
+          "implementation_steps": [
+            "Define service SLOs (latency, availability, reconnect success).",
+            "Instrument key metrics and export to dashboard backend.",
+            "Configure alerts for error spikes and restart storms."
+          ],
+          "deliverables": [
+            "Operational dashboard.",
+            "Alert definitions and thresholds."
+          ],
+          "test_plan": {
+            "integration": [
+              "Trigger synthetic failures and verify alerts fire."
+            ],
+            "manual": [
+              "Dashboard review for key workflows and bottlenecks."
+            ]
+          },
+          "acceptance_criteria": [
+            "Operational health can be evaluated quickly from dashboards and alerts."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P5-T502",
+          "title": "Implement backup, restore, and migration strategy",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P2-T203"
+          ],
+          "implementation_steps": [
+            "Add automated backups for SQLite metadata store and app config.",
+            "Implement restore workflow with integrity checks.",
+            "Document migration and rollback steps for schema updates."
+          ],
+          "deliverables": [
+            "Backup/restore scripts.",
+            "Migration playbook."
+          ],
+          "test_plan": {
+            "integration": [
+              "Backup then restore to clean environment and run metadata consistency checks."
+            ],
+            "manual": [
+              "Simulated accidental DB deletion recovery drill."
+            ]
+          },
+          "acceptance_criteria": [
+            "Data recovery procedure is tested and repeatable."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P5-T503",
+          "title": "Create production service management scripts (WSL + Windows)",
+          "priority": "P1",
+          "estimate_days": 1,
+          "dependencies": [
+            "P1-T101"
+          ],
+          "implementation_steps": [
+            "Provide service scripts for backend startup/restart (systemd user unit or pm2 in WSL).",
+            "Add Windows-side Tailscale Serve startup verification script.",
+            "Add health-check and self-heal script."
+          ],
+          "deliverables": [
+            "Ops scripts under `infra/ops`.",
+            "Service management docs."
+          ],
+          "test_plan": {
+            "integration": [
+              "Cold boot system and verify services come up in correct order.",
+              "Kill backend service and verify restart automation."
+            ]
+          },
+          "acceptance_criteria": [
+            "Service lifecycle can be managed repeatably with scripts."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P5-T504",
+          "title": "Write and validate incident response runbooks",
+          "priority": "P1",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P5-T501",
+            "P5-T503"
+          ],
+          "implementation_steps": [
+            "Create runbooks for auth lockout, app-server crash loop, high latency, and Tailscale path failures.",
+            "Define RTO targets and escalation paths.",
+            "Run tabletop and live drills."
+          ],
+          "deliverables": [
+            "Runbook docs in `docs/runbooks`.",
+            "Drill result logs and action items."
+          ],
+          "test_plan": {
+            "manual": [
+              "Execute drills and timestamp each recovery step.",
+              "Verify all runbook commands are current and executable."
+            ]
+          },
+          "acceptance_criteria": [
+            "Operational incidents can be handled quickly using documented procedures."
+          ],
+          "status": "todo"
+        },
+        {
+          "id": "P5-T505",
+          "title": "Final release readiness and go-live checklist",
+          "priority": "P0",
+          "estimate_days": 1.5,
+          "dependencies": [
+            "P5-T501",
+            "P5-T502",
+            "P5-T503",
+            "P5-T504"
+          ],
+          "implementation_steps": [
+            "Compile final release checklist with all phase gates and unresolved risks.",
+            "Run canary period on personal daily workflow for at least 3 days.",
+            "Capture final post-canary issues and patch before declaring stable."
+          ],
+          "deliverables": [
+            "Release checklist and signoff record.",
+            "Canary report."
+          ],
+          "test_plan": {
+            "e2e": [
+              "Daily-use scenario suite (workspace switching, long turn, approvals, terminal, reconnect)."
+            ],
+            "performance": [
+              "Verify p95 latency and reconnect SLOs during canary."
+            ],
+            "security": [
+              "Re-run critical security smoke tests before go-live."
+            ]
+          },
+          "acceptance_criteria": [
+            "Canary shows stable behavior with no P0/P1 issues."
+          ],
+          "status": "todo"
+        }
+      ]
+    }
+  ]
+}
