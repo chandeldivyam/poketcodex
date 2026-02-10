@@ -1,4 +1,4 @@
-import type { AppState, AppStateKey, TimelineEventEntry, TimelineEventKind } from "../state/app-state.js";
+import type { AppState, AppStateKey, TimelineEventCategory, TimelineEventEntry } from "../state/app-state.js";
 import {
   selectActiveWorkspace,
   selectSelectedThreadLabel,
@@ -10,10 +10,12 @@ import type { AppDomRefs } from "./app-shell.js";
 const MAX_RENDERED_EVENTS = 100;
 const TIMELINE_BOTTOM_THRESHOLD_PX = 28;
 
-const TIMELINE_KIND_LABELS: Record<TimelineEventKind, string> = {
-  user: "User",
-  runtime: "Runtime",
-  socket: "Socket",
+const TIMELINE_CATEGORY_LABELS: Record<TimelineEventCategory, string> = {
+  input: "Input",
+  message: "Message",
+  reasoning: "Reasoning",
+  tool: "Tool",
+  status: "Status",
   system: "System",
   error: "Error"
 };
@@ -36,21 +38,47 @@ function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
   const row = document.createElement("div");
   row.className = "timeline-item-row";
 
+  const badgeRow = document.createElement("div");
+  badgeRow.className = "timeline-badge-row";
+
   const badge = document.createElement("span");
   badge.className = `timeline-badge timeline-badge-${entry.kind}`;
-  badge.textContent = TIMELINE_KIND_LABELS[entry.kind];
+  badge.textContent = TIMELINE_CATEGORY_LABELS[entry.category];
+  badgeRow.append(badge);
+
+  if (entry.isInternal) {
+    const internalBadge = document.createElement("span");
+    internalBadge.className = "timeline-internal-badge";
+    internalBadge.textContent = "Internal";
+    badgeRow.append(internalBadge);
+  }
 
   const timestamp = document.createElement("time");
   timestamp.className = "timeline-time";
   timestamp.textContent = entry.timestamp;
 
-  row.append(badge, timestamp);
+  row.append(badgeRow, timestamp);
 
   const message = document.createElement("p");
   message.className = "timeline-message";
   message.textContent = entry.message;
 
   lineItem.append(row, message);
+
+  if (entry.details) {
+    const details = document.createElement("details");
+    details.className = "timeline-details";
+
+    const summary = document.createElement("summary");
+    summary.textContent = "Details";
+
+    const pre = document.createElement("pre");
+    pre.className = "timeline-details-content";
+    pre.textContent = entry.details;
+
+    details.append(summary, pre);
+    lineItem.append(details);
+  }
 
   return lineItem;
 }
@@ -71,7 +99,7 @@ export class AppRenderer {
     this.dom.jumpLatestButton.addEventListener("click", () => {
       this.followTimeline = true;
       this.scrollToLatest();
-      this.updateJumpLatestVisibility();
+      this.updateJumpLatestVisibility(this.getVisibleEvents().length > 0);
     });
   }
 
@@ -241,20 +269,27 @@ export class AppRenderer {
 
   private renderEvents(): void {
     const state = this.readState();
-    const events = state.stream.events.slice(-MAX_RENDERED_EVENTS);
+    const allEvents = state.stream.events.slice(-MAX_RENDERED_EVENTS);
+    const visibleEvents = state.stream.showInternalEvents ? allEvents : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+    const hiddenInternalCount = allEvents.length - visibleEvents.length;
 
-    if (events.length === 0) {
+    this.renderEventToolbar(state.stream.showInternalEvents, hiddenInternalCount);
+
+    if (visibleEvents.length === 0) {
       const placeholder = document.createElement("li");
       placeholder.className = "timeline-item timeline-system";
-      placeholder.textContent = "Awaiting events...";
+      placeholder.textContent =
+        hiddenInternalCount > 0
+          ? "Internal events are hidden. Enable Show Internal to inspect them."
+          : "Awaiting events...";
       this.dom.eventList.replaceChildren(placeholder);
       this.followTimeline = true;
-      this.updateJumpLatestVisibility();
+      this.updateJumpLatestVisibility(false);
       return;
     }
 
     const fragment = document.createDocumentFragment();
-    for (const eventEntry of events) {
+    for (const eventEntry of visibleEvents) {
       fragment.append(createTimelineItem(eventEntry));
     }
 
@@ -264,7 +299,15 @@ export class AppRenderer {
       this.scrollToLatest();
     }
 
-    this.updateJumpLatestVisibility();
+    this.updateJumpLatestVisibility(visibleEvents.length > 0);
+  }
+
+  private renderEventToolbar(showInternalEvents: boolean, hiddenInternalCount: number): void {
+    this.dom.toggleInternalEventsButton.textContent = showInternalEvents
+      ? "Hide Internal"
+      : hiddenInternalCount > 0
+        ? `Show Internal (${hiddenInternalCount})`
+        : "Show Internal";
   }
 
   private isNearTimelineBottom(): boolean {
@@ -274,12 +317,17 @@ export class AppRenderer {
 
   private handleTimelineScroll(): void {
     this.followTimeline = this.isNearTimelineBottom();
-    this.updateJumpLatestVisibility();
+    this.updateJumpLatestVisibility(this.getVisibleEvents().length > 0);
   }
 
-  private updateJumpLatestVisibility(): void {
-    const hasEvents = this.readState().stream.events.length > 0;
-    setHidden(this.dom.jumpLatestButton, !hasEvents || this.followTimeline);
+  private updateJumpLatestVisibility(hasVisibleEvents: boolean): void {
+    setHidden(this.dom.jumpLatestButton, !hasVisibleEvents || this.followTimeline);
+  }
+
+  private getVisibleEvents(): TimelineEventEntry[] {
+    const streamState = this.readState().stream;
+    const allEvents = streamState.events.slice(-MAX_RENDERED_EVENTS);
+    return streamState.showInternalEvents ? allEvents : allEvents.filter((eventEntry) => !eventEntry.isInternal);
   }
 
   private scrollToLatest(): void {

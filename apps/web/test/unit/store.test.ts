@@ -22,7 +22,8 @@ function createInitialState(): AppState {
     stream: {
       socketState: "disconnected",
       draftPrompt: "",
-      events: []
+      events: [],
+      showInternalEvents: false
     }
   };
 }
@@ -82,7 +83,9 @@ describe("AppStore", () => {
           id: "event-1",
           timestamp: "10:00:00 AM",
           message: "event-1",
-          kind: "system"
+          kind: "system",
+          category: "system",
+          isInternal: false
         }
       ]
     }));
@@ -92,7 +95,9 @@ describe("AppStore", () => {
         id: "event-1",
         timestamp: "10:00:00 AM",
         message: "event-1",
-        kind: "system"
+        kind: "system",
+        category: "system",
+        isInternal: false
       }
     ]);
     expect(store.getState().stream).not.toBe(before);

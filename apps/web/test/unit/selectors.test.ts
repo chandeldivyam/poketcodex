@@ -43,7 +43,8 @@ function createState(): AppState {
     stream: {
       socketState: "connected",
       draftPrompt: "",
-      events: []
+      events: [],
+      showInternalEvents: false
     }
   };
 }

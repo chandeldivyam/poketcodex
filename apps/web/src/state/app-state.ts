@@ -20,18 +20,23 @@ export interface ThreadState {
 }
 
 export type TimelineEventKind = "user" | "runtime" | "socket" | "system" | "error";
+export type TimelineEventCategory = "input" | "message" | "reasoning" | "tool" | "status" | "system" | "error";
 
 export interface TimelineEventEntry {
   id: string;
   timestamp: string;
   message: string;
   kind: TimelineEventKind;
+  category: TimelineEventCategory;
+  isInternal: boolean;
+  details?: string;
 }
 
 export interface StreamState {
   socketState: SocketConnectionState;
   draftPrompt: string;
   events: TimelineEventEntry[];
+  showInternalEvents: boolean;
 }
 
 export interface AppState {

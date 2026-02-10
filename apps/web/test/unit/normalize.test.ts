@@ -4,6 +4,7 @@ import type { ThreadListResponse } from "../../src/lib/api-client.js";
 import {
   extractThreadIdFromTurnResult,
   formatWorkspaceEvent,
+  normalizeWorkspaceTimelineEvent,
   normalizeThreadList
 } from "../../src/lib/normalize.js";
 
@@ -125,6 +126,31 @@ describe("formatWorkspaceEvent", () => {
     expect(message).toBe("");
   });
 
+  it("can include noisy notifications when requested", () => {
+    const message = formatWorkspaceEvent(
+      {
+        type: "workspace_runtime_event",
+        event: {
+          sequence: 9,
+          kind: "notification",
+          payload: {
+            method: "codex/event/skills_update_available",
+            params: {
+              msg: {
+                type: "skills_update_available"
+              }
+            }
+          }
+        }
+      },
+      {
+        includeNoise: true
+      }
+    );
+
+    expect(message).toBe('#9 codex/event/skills_update_available {"msg":{"type":"skills_update_available"}}');
+  });
+
   it("formats state and stderr runtime entries", () => {
     expect(
       formatWorkspaceEvent({
@@ -151,5 +177,76 @@ describe("formatWorkspaceEvent", () => {
         }
       })
     ).toBe('#5 runtime-stderr text="worker reported a warning"');
+  });
+});
+
+describe("normalizeWorkspaceTimelineEvent", () => {
+  it("returns structured runtime metadata for tool-like events", () => {
+    const normalized = normalizeWorkspaceTimelineEvent({
+      type: "workspace_runtime_event",
+      event: {
+        sequence: 14,
+        kind: "notification",
+        payload: {
+          method: "tool/call",
+          params: {
+            status: "running",
+            tool: "bash"
+          }
+        }
+      }
+    });
+
+    expect(normalized).toMatchObject({
+      message: "#14 tool/call status=running",
+      kind: "runtime",
+      category: "tool",
+      isInternal: false
+    });
+    expect(normalized?.details).toContain('"method": "tool/call"');
+  });
+
+  it("marks parse errors as internal error events", () => {
+    const normalized = normalizeWorkspaceTimelineEvent({
+      type: "parse_error",
+      raw: "not-json"
+    });
+
+    expect(normalized).toEqual({
+      message: "[socket] received non-JSON event payload",
+      kind: "error",
+      category: "error",
+      isInternal: true,
+      details: "not-json"
+    });
+  });
+
+  it("returns null for noisy events unless includeNoise is enabled", () => {
+    const payload = {
+      type: "workspace_runtime_event",
+      event: {
+        sequence: 2,
+        kind: "notification",
+        payload: {
+          method: "codex/event/skills_update_available",
+          params: {
+            msg: {
+              type: "skills_update_available"
+            }
+          }
+        }
+      }
+    };
+
+    expect(normalizeWorkspaceTimelineEvent(payload)).toBeNull();
+    expect(
+      normalizeWorkspaceTimelineEvent(payload, {
+        includeNoise: true
+      })
+    ).toMatchObject({
+      kind: "runtime",
+      category: "status",
+      isInternal: true
+    });
   });
 });

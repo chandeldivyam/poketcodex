@@ -26,6 +26,7 @@ export interface AppDomRefs {
   interruptTurnButton: HTMLButtonElement;
   eventStream: HTMLElement;
   eventList: HTMLOListElement;
+  toggleInternalEventsButton: HTMLButtonElement;
   jumpLatestButton: HTMLButtonElement;
 }
 
@@ -120,7 +121,10 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
           <div class="event-toolbar">
             <span class="event-toolbar-label">Live runtime events</span>
-            <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+            <div class="event-toolbar-actions">
+              <button class="button-secondary" type="button" data-role="toggle-internal-events">Show Internal</button>
+              <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+            </div>
           </div>
 
           <div class="event-stream" data-role="event-stream">
@@ -161,6 +165,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
     eventStream: requireElement<HTMLElement>(root, "[data-role='event-stream']"),
     eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']"),
+    toggleInternalEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='toggle-internal-events']"),
     jumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='jump-latest']")
   };
 }

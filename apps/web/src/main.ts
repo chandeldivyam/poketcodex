@@ -1,12 +1,13 @@
 import { ApiClient, ApiClientError, type WorkspaceRecord } from "./lib/api-client.js";
 import {
   extractThreadIdFromTurnResult,
-  formatWorkspaceEvent,
+  normalizeWorkspaceTimelineEvent,
   normalizeThreadList,
-  type ThreadListItem
+  type ThreadListItem,
+  type WorkspaceTimelineCategory
 } from "./lib/normalize.js";
 import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
-import type { AppState, AppStateKey, TimelineEventKind } from "./state/app-state.js";
+import type { AppState, AppStateKey, TimelineEventCategory, TimelineEventKind } from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
 import { AppStore } from "./state/store.js";
 import { AppRenderer } from "./ui/app-renderer.js";
@@ -15,6 +16,7 @@ import "./styles.css";
 
 const STORAGE_SELECTED_WORKSPACE_KEY = "poketcodex.selectedWorkspaceId";
 const STORAGE_SELECTED_THREAD_KEY = "poketcodex.selectedThreadId";
+const STORAGE_SHOW_INTERNAL_EVENTS_KEY = "poketcodex.showInternalEvents";
 const MAX_STORED_EVENTS = 240;
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
@@ -45,6 +47,28 @@ function writeStorageValue(key: string, value: string | null): void {
   }
 }
 
+function readStorageBoolean(key: string, fallback = false): boolean {
+  const value = readStorageValue(key);
+  if (value === null) {
+    return fallback;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true" || normalized === "yes") {
+    return true;
+  }
+
+  if (normalized === "0" || normalized === "false" || normalized === "no") {
+    return false;
+  }
+
+  return fallback;
+}
+
+function writeStorageBoolean(key: string, value: boolean): void {
+  writeStorageValue(key, value ? "1" : "0");
+}
+
 const initialState: AppState = {
   session: {
     authenticated: false,
@@ -63,7 +87,8 @@ const initialState: AppState = {
   stream: {
     socketState: "disconnected",
     draftPrompt: "",
-    events: []
+    events: [],
+    showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false)
   }
 };
 
@@ -143,20 +168,54 @@ function setBusy(busy: boolean): void {
   });
 }
 
+function setShowInternalEvents(showInternalEvents: boolean): void {
+  writeStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, showInternalEvents);
+  store.patchSlice("stream", {
+    showInternalEvents
+  });
+}
+
 function activeWorkspace(): WorkspaceRecord | null {
   return selectActiveWorkspace(store.getState());
 }
 
-function appendEvent(message: string, kind: TimelineEventKind = "system"): void {
+function mapCategoryFromKind(kind: TimelineEventKind): TimelineEventCategory {
+  if (kind === "user") {
+    return "input";
+  }
+
+  if (kind === "error") {
+    return "error";
+  }
+
+  return "status";
+}
+
+function mapCategory(category: WorkspaceTimelineCategory): TimelineEventCategory {
+  return category;
+}
+
+interface AppendEventOptions {
+  category?: TimelineEventCategory;
+  isInternal?: boolean;
+  details?: string;
+}
+
+function appendEvent(message: string, kind: TimelineEventKind = "system", options: AppendEventOptions = {}): void {
   store.updateSlice("stream", (stream) => {
+    const nextEntry = {
+      id: `event-${eventSequence}`,
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+      kind,
+      category: options.category ?? mapCategoryFromKind(kind),
+      isInternal: options.isInternal ?? false,
+      ...(options.details !== undefined ? { details: options.details } : {})
+    };
+
     const nextEvents = [
       ...stream.events,
-      {
-        id: `event-${eventSequence}`,
-        timestamp: new Date().toLocaleTimeString(),
-        message,
-        kind
-      }
+      nextEntry
     ];
 
     eventSequence += 1;
@@ -189,22 +248,6 @@ function handleApiError(error: unknown): void {
   const message = "An unknown error occurred";
   setError(message);
   appendEvent(message, "error");
-}
-
-function classifyWorkspaceEvent(formattedEvent: string): TimelineEventKind {
-  if (formattedEvent.startsWith("[socket]")) {
-    return "socket";
-  }
-
-  if (formattedEvent.includes("runtime-stderr")) {
-    return "error";
-  }
-
-  if (formattedEvent.startsWith("#")) {
-    return "runtime";
-  }
-
-  return "system";
 }
 
 function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | null {
@@ -291,12 +334,19 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
       });
     },
     onMessage: (payload) => {
-      const formattedEvent = formatWorkspaceEvent(payload);
-      if (formattedEvent.length === 0) {
+      const normalizedEvent = normalizeWorkspaceTimelineEvent(payload, {
+        includeNoise: store.getState().stream.showInternalEvents
+      });
+
+      if (!normalizedEvent) {
         return;
       }
 
-      appendEvent(formattedEvent, classifyWorkspaceEvent(formattedEvent));
+      appendEvent(normalizedEvent.message, normalizedEvent.kind, {
+        category: mapCategory(normalizedEvent.category),
+        isInternal: normalizedEvent.isInternal,
+        ...(normalizedEvent.details !== undefined ? { details: normalizedEvent.details } : {})
+      });
     }
   });
 
@@ -414,7 +464,8 @@ async function handleLogout(): Promise<void> {
     stream: {
       socketState: "disconnected",
       draftPrompt: "",
-      events: []
+      events: [],
+      showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false)
     }
   });
   eventSequence = 0;
@@ -660,6 +711,10 @@ function attachHandlers(): void {
 
   dom.reconnectEventsButton.addEventListener("click", () => {
     handleReconnectEvents();
+  });
+
+  dom.toggleInternalEventsButton.addEventListener("click", () => {
+    setShowInternalEvents(!store.getState().stream.showInternalEvents);
   });
 
   dom.refreshThreadsButton.addEventListener("click", () => {
