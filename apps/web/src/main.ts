@@ -569,7 +569,12 @@ async function handleTurnSubmit(event: Event): Promise<void> {
   try {
     const csrfToken = requireCsrfToken();
     const payload: Record<string, unknown> = {
-      prompt: normalizedPrompt,
+      input: [
+        {
+          type: "text",
+          text: normalizedPrompt
+        }
+      ],
       ...(state.selectedThreadId ? { threadId: state.selectedThreadId } : {})
     };
 
