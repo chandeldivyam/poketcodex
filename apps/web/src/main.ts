@@ -122,6 +122,7 @@ const pendingRuntimeEvents: Array<{
   options: AppendEventOptions;
 }> = [];
 const pendingChangedSlices = new Set<AppStateKey>();
+const draftCacheByContext = new Map<string, string>();
 
 store.subscribe((_state, changedSlices) => {
   for (const key of changedSlices) {
@@ -170,6 +171,48 @@ function setSelectedThreadId(threadId: string | null): void {
   store.patchSlice("thread", {
     selectedThreadId: threadId
   });
+}
+
+function buildDraftContextKey(workspaceId: string | null, threadId: string | null): string | null {
+  if (!workspaceId) {
+    return null;
+  }
+
+  return `${workspaceId}::${threadId ?? "__no_thread__"}`;
+}
+
+function updateDraftCacheForContext(contextKey: string | null, draftPrompt: string): void {
+  if (!contextKey) {
+    return;
+  }
+
+  if (draftPrompt.trim().length === 0) {
+    draftCacheByContext.delete(contextKey);
+    return;
+  }
+
+  draftCacheByContext.set(contextKey, draftPrompt);
+}
+
+function getCurrentDraftContextKey(): string | null {
+  const state = store.getState();
+  return buildDraftContextKey(state.workspace.selectedWorkspaceId, state.thread.selectedThreadId);
+}
+
+function persistCurrentDraftPrompt(): void {
+  updateDraftCacheForContext(getCurrentDraftContextKey(), store.getState().stream.draftPrompt);
+}
+
+function setDraftPrompt(draftPrompt: string): void {
+  store.patchSlice("stream", {
+    draftPrompt
+  });
+}
+
+function restoreDraftPrompt(workspaceId: string | null, threadId: string | null): void {
+  const contextKey = buildDraftContextKey(workspaceId, threadId);
+  const cachedPrompt = contextKey ? draftCacheByContext.get(contextKey) ?? "" : "";
+  setDraftPrompt(cachedPrompt);
 }
 
 function setError(message: string | null): void {
@@ -493,6 +536,7 @@ async function loadThreads(workspaceId: string): Promise<void> {
 
   const nextThreadId = resolveSelectedThreadId(threads);
   setSelectedThreadId(nextThreadId);
+  restoreDraftPrompt(workspaceId, nextThreadId);
 }
 
 function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): void {
@@ -556,6 +600,7 @@ async function initializeSession(): Promise<void> {
   });
 
   if (session.authenticated) {
+    draftCacheByContext.clear();
     await loadWorkspaces();
     return;
   }
@@ -599,6 +644,7 @@ async function handleLoginSubmit(event: Event): Promise<void> {
       turnPhase: "idle",
       turnStartedAtMs: null
     });
+    draftCacheByContext.clear();
     clearRuntimeEventQueue();
     eventSequence = 0;
 
@@ -657,6 +703,7 @@ async function handleLogout(): Promise<void> {
       turnStartedAtMs: null
     }
   });
+  draftCacheByContext.clear();
   eventSequence = 0;
 }
 
@@ -749,6 +796,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
   store.patchSlice("stream", {
     draftPrompt: normalizedPrompt
   });
+  persistCurrentDraftPrompt();
 
   clearError();
   setTurnExecutionPhase("submitting", {
@@ -784,6 +832,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     appendEvent("Turn started", "runtime");
     dom.turnForm.reset();
 
+    updateDraftCacheForContext(getCurrentDraftContextKey(), "");
     store.patchSlice("stream", {
       draftPrompt: ""
     });
@@ -849,12 +898,14 @@ function handleWorkspaceSelection(workspaceId: string): void {
     return;
   }
 
+  persistCurrentDraftPrompt();
   setSelectedWorkspaceId(workspaceId);
   store.patchSlice("thread", {
     threads: [],
     selectedThreadId: null
   });
   setSelectedThreadId(null);
+  restoreDraftPrompt(workspaceId, null);
 
   clearError();
   clearRuntimeEventQueue();
@@ -875,7 +926,9 @@ function handleWorkspaceSelection(workspaceId: string): void {
 }
 
 function handleThreadSelection(threadId: string): void {
+  persistCurrentDraftPrompt();
   setSelectedThreadId(threadId);
+  restoreDraftPrompt(store.getState().workspace.selectedWorkspaceId, threadId);
   appendEvent(`Selected thread: ${threadId}`, "system");
 }
 
@@ -893,9 +946,9 @@ function attachHandlers(): void {
   });
 
   dom.turnPromptInput.addEventListener("input", () => {
-    store.patchSlice("stream", {
-      draftPrompt: dom.turnPromptInput.value
-    });
+    const draftPrompt = dom.turnPromptInput.value;
+    setDraftPrompt(draftPrompt);
+    updateDraftCacheForContext(getCurrentDraftContextKey(), draftPrompt);
   });
 
   dom.turnPromptInput.addEventListener("keydown", (event) => {
