@@ -496,10 +496,12 @@ form {
 }
 
 .timeline-item {
+  --timeline-accent: #9db8b1;
   font-size: 0.8rem;
   line-height: 1.35;
   color: #23343a;
   border: 1px solid #d5e2dc;
+  border-left: 4px solid var(--timeline-accent);
   border-radius: var(--radius-sm);
   background: #fbfdfa;
   padding: 0.55rem 0.62rem;
@@ -565,6 +567,31 @@ form {
   line-break: anywhere;
 }
 
+.timeline-message-collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.timeline-toggle-message {
+  justify-self: start;
+  min-height: 28px;
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #2d5f56;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.timeline-toggle-message:hover:not(:disabled) {
+  text-decoration: underline;
+  transform: none;
+}
+
 .timeline-details {
   margin-top: 0.2rem;
   border-top: 1px dashed #cdded7;
@@ -578,6 +605,10 @@ form {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.timeline-item.is-details-expanded {
+  border-color: #92b8ad;
 }
 
 .timeline-details-content {
@@ -645,6 +676,76 @@ form {
 }
 
 .timeline-badge-error {
+  color: #8a2f1e;
+  border-color: #e2aa9e;
+  background: #ffdcd3;
+}
+
+.timeline-category-input {
+  --timeline-accent: #4f88cc;
+}
+
+.timeline-category-message {
+  --timeline-accent: #4f6ec6;
+}
+
+.timeline-category-reasoning {
+  --timeline-accent: #7a5db8;
+}
+
+.timeline-category-tool {
+  --timeline-accent: #27857a;
+}
+
+.timeline-category-status {
+  --timeline-accent: #6a8a7f;
+}
+
+.timeline-category-system {
+  --timeline-accent: #7a8f89;
+}
+
+.timeline-category-error {
+  --timeline-accent: #b24d38;
+}
+
+.timeline-badge-category-input {
+  color: #1e4f85;
+  border-color: #a8c8ea;
+  background: #e4f0ff;
+}
+
+.timeline-badge-category-message {
+  color: #2f4490;
+  border-color: #bbc6f0;
+  background: #ecf0ff;
+}
+
+.timeline-badge-category-reasoning {
+  color: #553f8e;
+  border-color: #c8bbe7;
+  background: #f1edfb;
+}
+
+.timeline-badge-category-tool {
+  color: #1f6658;
+  border-color: #9dd0bf;
+  background: #dff5ec;
+}
+
+.timeline-badge-category-status {
+  color: #415d55;
+  border-color: #b9ccc5;
+  background: #e8f1ee;
+}
+
+.timeline-badge-category-system {
+  color: #4f5f5a;
+  border-color: #c3d2cb;
+  background: #ebf2ef;
+}
+
+.timeline-badge-category-error {
   color: #8a2f1e;
   border-color: #e2aa9e;
   background: #ffdcd3;

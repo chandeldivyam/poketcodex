@@ -27,6 +27,19 @@ const TIMELINE_CATEGORY_LABELS: Record<TimelineEventCategory, string> = {
   error: "Error"
 };
 
+const TIMELINE_DETAILS_SUMMARY_LABELS: Record<TimelineEventCategory, string> = {
+  input: "Input Details",
+  message: "Message Details",
+  reasoning: "Reasoning Trace",
+  tool: "Tool Payload",
+  status: "Status Payload",
+  system: "System Payload",
+  error: "Error Details"
+};
+
+const TIMELINE_MESSAGE_COLLAPSE_LENGTH = 220;
+const TIMELINE_MESSAGE_COLLAPSE_LINES = 4;
+
 interface TurnStatusPresentation {
   label: string;
   description: string;
@@ -139,9 +152,14 @@ function renderEmptyMessage(message: string): HTMLParagraphElement {
   return paragraph;
 }
 
+function shouldCollapseTimelineMessage(message: string): boolean {
+  const lineCount = message.split(/\r?\n/).length;
+  return message.length >= TIMELINE_MESSAGE_COLLAPSE_LENGTH || lineCount >= TIMELINE_MESSAGE_COLLAPSE_LINES;
+}
+
 function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
   const lineItem = document.createElement("li");
-  lineItem.className = `timeline-item timeline-${entry.kind}`;
+  lineItem.className = `timeline-item timeline-${entry.kind} timeline-category-${entry.category}`;
 
   const row = document.createElement("div");
   row.className = "timeline-item-row";
@@ -150,7 +168,7 @@ function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
   badgeRow.className = "timeline-badge-row";
 
   const badge = document.createElement("span");
-  badge.className = `timeline-badge timeline-badge-${entry.kind}`;
+  badge.className = `timeline-badge timeline-badge-category-${entry.category}`;
   badge.textContent = TIMELINE_CATEGORY_LABELS[entry.category];
   badgeRow.append(badge);
 
@@ -180,16 +198,43 @@ function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
 
   lineItem.append(row, message);
 
+  if (shouldCollapseTimelineMessage(entry.message)) {
+    message.classList.add("timeline-message-collapsed");
+
+    const toggleMessageButton = document.createElement("button");
+    toggleMessageButton.type = "button";
+    toggleMessageButton.className = "timeline-toggle-message";
+
+    let messageExpanded = false;
+    const updateMessageExpansion = (): void => {
+      message.classList.toggle("timeline-message-collapsed", !messageExpanded);
+      lineItem.classList.toggle("is-message-expanded", messageExpanded);
+      toggleMessageButton.textContent = messageExpanded ? "Collapse Message" : "Expand Message";
+    };
+
+    toggleMessageButton.addEventListener("click", () => {
+      messageExpanded = !messageExpanded;
+      updateMessageExpansion();
+    });
+
+    updateMessageExpansion();
+    lineItem.append(toggleMessageButton);
+  }
+
   if (entry.details) {
     const details = document.createElement("details");
     details.className = "timeline-details";
 
     const summary = document.createElement("summary");
-    summary.textContent = "Details";
+    summary.textContent = TIMELINE_DETAILS_SUMMARY_LABELS[entry.category];
 
     const pre = document.createElement("pre");
     pre.className = "timeline-details-content";
     pre.textContent = entry.details;
+
+    details.addEventListener("toggle", () => {
+      lineItem.classList.toggle("is-details-expanded", details.open);
+    });
 
     details.append(summary, pre);
     lineItem.append(details);
