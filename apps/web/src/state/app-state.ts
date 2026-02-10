@@ -30,6 +30,7 @@ export interface TimelineEventEntry {
   kind: TimelineEventKind;
   category: TimelineEventCategory;
   isInternal: boolean;
+  source?: string;
   details?: string;
 }
 
@@ -38,6 +39,7 @@ export interface StreamState {
   draftPrompt: string;
   events: TimelineEventEntry[];
   showInternalEvents: boolean;
+  showStatusEvents: boolean;
   turnPhase: TurnExecutionPhase;
   turnStartedAtMs: number | null;
 }

@@ -485,6 +485,17 @@ form {
   font-weight: 700;
 }
 
+.timeline-source {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #35544c;
+  border: 1px solid #c4d7cf;
+  border-radius: 999px;
+  background: #edf5f1;
+  padding: 0.1rem 0.45rem;
+  line-break: anywhere;
+}
+
 .timeline-internal-badge {
   font-size: 0.67rem;
   text-transform: uppercase;

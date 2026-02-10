@@ -202,6 +202,7 @@ describe("normalizeWorkspaceTimelineEvent", () => {
       kind: "runtime",
       category: "tool",
       isInternal: false,
+      source: "tool/call",
       turnSignal: "running"
     });
     expect(normalized?.details).toContain('"method": "tool/call"');
@@ -218,6 +219,7 @@ describe("normalizeWorkspaceTimelineEvent", () => {
       kind: "error",
       category: "error",
       isInternal: true,
+      source: "parse_error",
       details: "not-json"
     });
   });

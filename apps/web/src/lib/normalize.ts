@@ -18,6 +18,7 @@ export interface NormalizedWorkspaceTimelineEvent {
   kind: "runtime" | "socket" | "system" | "error";
   category: WorkspaceTimelineCategory;
   isInternal: boolean;
+  source?: string;
   details?: string;
   turnSignal?: WorkspaceTurnSignal;
 }
@@ -95,26 +96,30 @@ function stringifyDetails(value: unknown, maxLength = 1200): string | undefined 
 }
 
 interface OptionalEventFields {
+  source?: string;
   details?: string;
   turnSignal?: WorkspaceTurnSignal;
 }
 
-function withOptionalFields<TBase extends Omit<NormalizedWorkspaceTimelineEvent, "details" | "turnSignal">>(
+function withOptionalFields<TBase extends Omit<NormalizedWorkspaceTimelineEvent, "source" | "details" | "turnSignal">>(
   baseEvent: TBase,
   optionalFields: OptionalEventFields
 ): NormalizedWorkspaceTimelineEvent {
   return {
     ...baseEvent,
+    ...(optionalFields.source !== undefined ? { source: optionalFields.source } : {}),
     ...(optionalFields.details !== undefined ? { details: optionalFields.details } : {}),
     ...(optionalFields.turnSignal !== undefined ? { turnSignal: optionalFields.turnSignal } : {})
   };
 }
 
 function buildOptionalEventFields(
+  source: string | undefined,
   details: string | undefined,
   turnSignal?: WorkspaceTurnSignal
 ): OptionalEventFields {
   return {
+    ...(source !== undefined ? { source } : {}),
     ...(details !== undefined ? { details } : {}),
     ...(turnSignal !== undefined ? { turnSignal } : {})
   };
@@ -412,7 +417,8 @@ export function normalizeWorkspaceTimelineEvent(
       message,
       kind: "system",
       category: "system",
-      isInternal: false
+      isInternal: false,
+      source: "unknown_event"
     };
   }
 
@@ -422,7 +428,8 @@ export function normalizeWorkspaceTimelineEvent(
       message,
       kind: "socket",
       category: "status",
-      isInternal: false
+      isInternal: false,
+      source: "workspace_events"
     };
   }
 
@@ -434,7 +441,7 @@ export function normalizeWorkspaceTimelineEvent(
         category: "error",
         isInternal: true
       },
-      buildOptionalEventFields(stringifyDetails(baseEnvelope.raw))
+      buildOptionalEventFields("parse_error", stringifyDetails(baseEnvelope.raw))
     );
   }
 
@@ -446,7 +453,10 @@ export function normalizeWorkspaceTimelineEvent(
         category: "system",
         isInternal: false
       },
-      buildOptionalEventFields(stringifyDetails(eventPayload))
+      buildOptionalEventFields(
+        typeof baseEnvelope.type === "string" ? baseEnvelope.type : "system_event",
+        stringifyDetails(eventPayload)
+      )
     );
   }
 
@@ -464,6 +474,7 @@ export function normalizeWorkspaceTimelineEvent(
         isInternal: isInternalMethod(runtime.method)
       },
       buildOptionalEventFields(
+        runtime.method,
         stringifyDetails({
           sequence: runtime.sequence,
           method: runtime.method,
@@ -482,7 +493,7 @@ export function normalizeWorkspaceTimelineEvent(
         category: "error",
         isInternal: false
       },
-      buildOptionalEventFields(stringifyDetails(runtime.payload))
+      buildOptionalEventFields("runtime-stderr", stringifyDetails(runtime.payload))
     );
   }
 
@@ -494,7 +505,7 @@ export function normalizeWorkspaceTimelineEvent(
         category: "status",
         isInternal: false
       },
-      buildOptionalEventFields(stringifyDetails(runtime.payload))
+      buildOptionalEventFields("runtime-state", stringifyDetails(runtime.payload))
     );
   }
 
@@ -505,6 +516,6 @@ export function normalizeWorkspaceTimelineEvent(
       category: "status",
       isInternal: false
     },
-    buildOptionalEventFields(stringifyDetails(runtime.payload))
+    buildOptionalEventFields(runtime.kind, stringifyDetails(runtime.payload))
   );
 }

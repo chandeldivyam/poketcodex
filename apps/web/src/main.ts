@@ -25,6 +25,7 @@ import "./styles.css";
 const STORAGE_SELECTED_WORKSPACE_KEY = "poketcodex.selectedWorkspaceId";
 const STORAGE_SELECTED_THREAD_KEY = "poketcodex.selectedThreadId";
 const STORAGE_SHOW_INTERNAL_EVENTS_KEY = "poketcodex.showInternalEvents";
+const STORAGE_SHOW_STATUS_EVENTS_KEY = "poketcodex.showStatusEvents";
 const MAX_STORED_EVENTS = 240;
 const RUNTIME_EVENT_BATCH_MS = 48;
 
@@ -98,6 +99,7 @@ const initialState: AppState = {
     draftPrompt: "",
     events: [],
     showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
+    showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
     turnPhase: "idle",
     turnStartedAtMs: null
   }
@@ -193,6 +195,13 @@ function setShowInternalEvents(showInternalEvents: boolean): void {
   });
 }
 
+function setShowStatusEvents(showStatusEvents: boolean): void {
+  writeStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, showStatusEvents);
+  store.patchSlice("stream", {
+    showStatusEvents
+  });
+}
+
 function setTurnExecutionPhase(
   turnPhase: TurnExecutionPhase,
   options: {
@@ -279,6 +288,7 @@ function mapCategory(category: WorkspaceTimelineCategory): TimelineEventCategory
 interface AppendEventOptions {
   category?: TimelineEventCategory;
   isInternal?: boolean;
+  source?: string;
   details?: string;
 }
 
@@ -298,6 +308,7 @@ function createTimelineEntry(draft: TimelineEventDraft): TimelineEventEntry {
     kind: draft.kind,
     category: options.category ?? mapCategoryFromKind(draft.kind),
     isInternal: options.isInternal ?? false,
+    ...(options.source !== undefined ? { source: options.source } : {}),
     ...(options.details !== undefined ? { details: options.details } : {})
   };
 }
@@ -513,6 +524,7 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
       enqueueRuntimeEvent(workspaceId, normalizedEvent.message, normalizedEvent.kind, {
         category: mapCategory(normalizedEvent.category),
         isInternal: normalizedEvent.isInternal,
+        ...(normalizedEvent.source !== undefined ? { source: normalizedEvent.source } : {}),
         ...(normalizedEvent.details !== undefined ? { details: normalizedEvent.details } : {})
       });
     }
@@ -640,6 +652,7 @@ async function handleLogout(): Promise<void> {
       draftPrompt: "",
       events: [],
       showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
+      showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
       turnPhase: "idle",
       turnStartedAtMs: null
     }
@@ -940,6 +953,10 @@ function attachHandlers(): void {
 
   dom.reconnectEventsButton.addEventListener("click", () => {
     handleReconnectEvents();
+  });
+
+  dom.toggleStatusEventsButton.addEventListener("click", () => {
+    setShowStatusEvents(!store.getState().stream.showStatusEvents);
   });
 
   dom.toggleInternalEventsButton.addEventListener("click", () => {

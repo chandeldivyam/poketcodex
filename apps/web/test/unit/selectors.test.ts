@@ -45,6 +45,7 @@ function createState(): AppState {
       draftPrompt: "",
       events: [],
       showInternalEvents: false,
+      showStatusEvents: false,
       turnPhase: "idle",
       turnStartedAtMs: null
     }

@@ -115,6 +115,13 @@ function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
   badge.textContent = TIMELINE_CATEGORY_LABELS[entry.category];
   badgeRow.append(badge);
 
+  if (entry.source) {
+    const sourceChip = document.createElement("span");
+    sourceChip.className = "timeline-source";
+    sourceChip.textContent = entry.source;
+    badgeRow.append(sourceChip);
+  }
+
   if (entry.isInternal) {
     const internalBadge = document.createElement("span");
     internalBadge.className = "timeline-internal-badge";
@@ -150,6 +157,37 @@ function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
   }
 
   return lineItem;
+}
+
+function createCompactedStatusEvent(statusEvents: TimelineEventEntry[]): TimelineEventEntry {
+  if (statusEvents.length === 0) {
+    throw new Error("Cannot compact an empty status event list.");
+  }
+
+  const first = statusEvents[0];
+  const last = statusEvents[statusEvents.length - 1];
+  const summaryLines = statusEvents.map((eventEntry) => `[${eventEntry.timestamp}] ${eventEntry.message}`);
+
+  if (first === undefined || last === undefined) {
+    throw new Error("Cannot compact status events without boundaries.");
+  }
+
+  const compactedEvent: TimelineEventEntry = {
+    id: `${first.id}-to-${last.id}-summary`,
+    timestamp: last.timestamp,
+    message: `${statusEvents.length} status updates`,
+    kind: last.kind,
+    category: last.category,
+    isInternal: statusEvents.some((eventEntry) => eventEntry.isInternal),
+    details: summaryLines.join("\n")
+  };
+
+  const source = last.source ?? first.source;
+  if (source !== undefined) {
+    compactedEvent.source = source;
+  }
+
+  return compactedEvent;
 }
 
 export class AppRenderer {
@@ -376,19 +414,24 @@ export class AppRenderer {
 
   private renderEvents(): void {
     const state = this.readState();
-    const allEvents = state.stream.events.slice(-MAX_RENDERED_EVENTS);
-    const visibleEvents = state.stream.showInternalEvents ? allEvents : allEvents.filter((eventEntry) => !eventEntry.isInternal);
-    const hiddenInternalCount = allEvents.length - visibleEvents.length;
+    const { visibleEvents, hiddenInternalCount, hiddenStatusCount } = this.buildEventViews();
 
-    this.renderEventToolbar(state.stream.showInternalEvents, hiddenInternalCount);
+    this.renderEventToolbar(
+      state.stream.showStatusEvents,
+      hiddenStatusCount,
+      state.stream.showInternalEvents,
+      hiddenInternalCount
+    );
 
     if (visibleEvents.length === 0) {
       const placeholder = document.createElement("li");
       placeholder.className = "timeline-item timeline-system";
-      placeholder.textContent =
-        hiddenInternalCount > 0
-          ? "Internal events are hidden. Enable Show Internal to inspect them."
-          : "Awaiting events...";
+      if (hiddenStatusCount > 0 || hiddenInternalCount > 0) {
+        placeholder.textContent =
+          "Events are hidden by filters. Enable Show Status or Show Internal to inspect them.";
+      } else {
+        placeholder.textContent = "Awaiting events...";
+      }
       this.dom.eventList.replaceChildren(placeholder);
       this.followTimeline = true;
       this.updateJumpLatestVisibility(false);
@@ -409,7 +452,18 @@ export class AppRenderer {
     this.updateJumpLatestVisibility(visibleEvents.length > 0);
   }
 
-  private renderEventToolbar(showInternalEvents: boolean, hiddenInternalCount: number): void {
+  private renderEventToolbar(
+    showStatusEvents: boolean,
+    hiddenStatusCount: number,
+    showInternalEvents: boolean,
+    hiddenInternalCount: number
+  ): void {
+    this.dom.toggleStatusEventsButton.textContent = showStatusEvents
+      ? "Hide Status"
+      : hiddenStatusCount > 0
+        ? `Show Status (${hiddenStatusCount})`
+        : "Show Status";
+
     this.dom.toggleInternalEventsButton.textContent = showInternalEvents
       ? "Hide Internal"
       : hiddenInternalCount > 0
@@ -434,7 +488,79 @@ export class AppRenderer {
   private getVisibleEvents(): TimelineEventEntry[] {
     const streamState = this.readState().stream;
     const allEvents = streamState.events.slice(-MAX_RENDERED_EVENTS);
-    return streamState.showInternalEvents ? allEvents : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+    const internalFilteredEvents = streamState.showInternalEvents
+      ? allEvents
+      : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+    const statusFilteredEvents = streamState.showStatusEvents
+      ? internalFilteredEvents
+      : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
+
+    return this.compactStatusBursts(statusFilteredEvents);
+  }
+
+  private buildEventViews(): {
+    visibleEvents: TimelineEventEntry[];
+    hiddenInternalCount: number;
+    hiddenStatusCount: number;
+  } {
+    const streamState = this.readState().stream;
+    const allEvents = streamState.events.slice(-MAX_RENDERED_EVENTS);
+    const internalFilteredEvents = streamState.showInternalEvents
+      ? allEvents
+      : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+    const statusFilteredEvents = streamState.showStatusEvents
+      ? internalFilteredEvents
+      : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
+
+    return {
+      visibleEvents: this.compactStatusBursts(statusFilteredEvents),
+      hiddenInternalCount: allEvents.length - internalFilteredEvents.length,
+      hiddenStatusCount: internalFilteredEvents.length - statusFilteredEvents.length
+    };
+  }
+
+  private compactStatusBursts(events: TimelineEventEntry[]): TimelineEventEntry[] {
+    const compacted: TimelineEventEntry[] = [];
+    let statusBuffer: TimelineEventEntry[] = [];
+
+    const flushStatusBuffer = (): void => {
+      if (statusBuffer.length === 0) {
+        return;
+      }
+
+      if (statusBuffer.length >= 3) {
+        compacted.push(createCompactedStatusEvent(statusBuffer));
+      } else {
+        compacted.push(...statusBuffer);
+      }
+
+      statusBuffer = [];
+    };
+
+    for (const eventEntry of events) {
+      const isRuntimeStatus = eventEntry.kind === "runtime" && eventEntry.category === "status";
+
+      if (!isRuntimeStatus) {
+        flushStatusBuffer();
+        compacted.push(eventEntry);
+        continue;
+      }
+
+      if (statusBuffer.length === 0) {
+        statusBuffer.push(eventEntry);
+        continue;
+      }
+
+      const previous = statusBuffer[statusBuffer.length - 1];
+      if (previous?.source && eventEntry.source && previous.source !== eventEntry.source) {
+        flushStatusBuffer();
+      }
+
+      statusBuffer.push(eventEntry);
+    }
+
+    flushStatusBuffer();
+    return compacted;
   }
 
   private scrollToLatest(): void {
