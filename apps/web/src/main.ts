@@ -7,7 +7,13 @@ import {
   type WorkspaceTimelineCategory
 } from "./lib/normalize.js";
 import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
-import type { AppState, AppStateKey, TimelineEventCategory, TimelineEventKind } from "./state/app-state.js";
+import type {
+  AppState,
+  AppStateKey,
+  TimelineEventCategory,
+  TimelineEventEntry,
+  TimelineEventKind
+} from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
 import { AppStore } from "./state/store.js";
 import { AppRenderer } from "./ui/app-renderer.js";
@@ -18,6 +24,7 @@ const STORAGE_SELECTED_WORKSPACE_KEY = "poketcodex.selectedWorkspaceId";
 const STORAGE_SELECTED_THREAD_KEY = "poketcodex.selectedThreadId";
 const STORAGE_SHOW_INTERNAL_EVENTS_KEY = "poketcodex.showInternalEvents";
 const MAX_STORED_EVENTS = 240;
+const RUNTIME_EVENT_BATCH_MS = 48;
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 
@@ -101,6 +108,13 @@ let workspaceSocket: ReconnectingWorkspaceSocket | undefined;
 let workspaceSocketWorkspaceId: string | null = null;
 let renderScheduled = false;
 let eventSequence = 0;
+let runtimeEventFlushTimer: number | undefined;
+const pendingRuntimeEvents: Array<{
+  workspaceId: string;
+  message: string;
+  kind: TimelineEventKind;
+  options: AppendEventOptions;
+}> = [];
 const pendingChangedSlices = new Set<AppStateKey>();
 
 store.subscribe((_state, changedSlices) => {
@@ -201,24 +215,38 @@ interface AppendEventOptions {
   details?: string;
 }
 
-function appendEvent(message: string, kind: TimelineEventKind = "system", options: AppendEventOptions = {}): void {
+interface TimelineEventDraft {
+  message: string;
+  kind: TimelineEventKind;
+  options?: AppendEventOptions;
+}
+
+function createTimelineEntry(draft: TimelineEventDraft): TimelineEventEntry {
+  const options = draft.options ?? {};
+
+  return {
+    id: `event-${eventSequence}`,
+    timestamp: new Date().toLocaleTimeString(),
+    message: draft.message,
+    kind: draft.kind,
+    category: options.category ?? mapCategoryFromKind(draft.kind),
+    isInternal: options.isInternal ?? false,
+    ...(options.details !== undefined ? { details: options.details } : {})
+  };
+}
+
+function appendEvents(eventDrafts: TimelineEventDraft[]): void {
+  if (eventDrafts.length === 0) {
+    return;
+  }
+
   store.updateSlice("stream", (stream) => {
-    const nextEntry = {
-      id: `event-${eventSequence}`,
-      timestamp: new Date().toLocaleTimeString(),
-      message,
-      kind,
-      category: options.category ?? mapCategoryFromKind(kind),
-      isInternal: options.isInternal ?? false,
-      ...(options.details !== undefined ? { details: options.details } : {})
-    };
+    const nextEvents = [...stream.events];
 
-    const nextEvents = [
-      ...stream.events,
-      nextEntry
-    ];
-
-    eventSequence += 1;
+    for (const eventDraft of eventDrafts) {
+      nextEvents.push(createTimelineEntry(eventDraft));
+      eventSequence += 1;
+    }
 
     if (nextEvents.length > MAX_STORED_EVENTS) {
       nextEvents.splice(0, nextEvents.length - MAX_STORED_EVENTS);
@@ -229,6 +257,76 @@ function appendEvent(message: string, kind: TimelineEventKind = "system", option
       events: nextEvents
     };
   });
+}
+
+function appendEvent(message: string, kind: TimelineEventKind = "system", options: AppendEventOptions = {}): void {
+  appendEvents([
+    {
+      message,
+      kind,
+      options
+    }
+  ]);
+}
+
+function flushRuntimeEventQueue(): void {
+  if (runtimeEventFlushTimer !== undefined) {
+    window.clearTimeout(runtimeEventFlushTimer);
+    runtimeEventFlushTimer = undefined;
+  }
+
+  if (pendingRuntimeEvents.length === 0) {
+    return;
+  }
+
+  const activeWorkspaceId = store.getState().workspace.selectedWorkspaceId;
+  const drained = pendingRuntimeEvents.splice(0, pendingRuntimeEvents.length);
+  const drafts: TimelineEventDraft[] = [];
+
+  for (const queued of drained) {
+    if (!activeWorkspaceId || queued.workspaceId !== activeWorkspaceId) {
+      continue;
+    }
+
+    drafts.push({
+      message: queued.message,
+      kind: queued.kind,
+      options: queued.options
+    });
+  }
+
+  appendEvents(drafts);
+}
+
+function clearRuntimeEventQueue(): void {
+  pendingRuntimeEvents.length = 0;
+
+  if (runtimeEventFlushTimer !== undefined) {
+    window.clearTimeout(runtimeEventFlushTimer);
+    runtimeEventFlushTimer = undefined;
+  }
+}
+
+function enqueueRuntimeEvent(
+  workspaceId: string,
+  message: string,
+  kind: TimelineEventKind,
+  options: AppendEventOptions
+): void {
+  pendingRuntimeEvents.push({
+    workspaceId,
+    message,
+    kind,
+    options
+  });
+
+  if (runtimeEventFlushTimer !== undefined) {
+    return;
+  }
+
+  runtimeEventFlushTimer = window.setTimeout(() => {
+    flushRuntimeEventQueue();
+  }, RUNTIME_EVENT_BATCH_MS);
 }
 
 function handleApiError(error: unknown): void {
@@ -342,7 +440,7 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
         return;
       }
 
-      appendEvent(normalizedEvent.message, normalizedEvent.kind, {
+      enqueueRuntimeEvent(workspaceId, normalizedEvent.message, normalizedEvent.kind, {
         category: mapCategory(normalizedEvent.category),
         isInternal: normalizedEvent.isInternal,
         ...(normalizedEvent.details !== undefined ? { details: normalizedEvent.details } : {})
@@ -354,6 +452,8 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
 }
 
 function disconnectWorkspaceEvents(): void {
+  clearRuntimeEventQueue();
+
   if (workspaceSocket) {
     workspaceSocket.disconnect();
     workspaceSocket = undefined;
@@ -415,6 +515,7 @@ async function handleLoginSubmit(event: Event): Promise<void> {
       draftPrompt: "",
       events: []
     });
+    clearRuntimeEventQueue();
     eventSequence = 0;
 
     if (loginResponse.authenticated) {
@@ -443,6 +544,7 @@ async function handleLogout(): Promise<void> {
   }
 
   disconnectWorkspaceEvents();
+  clearRuntimeEventQueue();
   setSelectedWorkspaceId(null);
   setSelectedThreadId(null);
 
@@ -641,6 +743,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
   setSelectedThreadId(null);
 
   clearError();
+  clearRuntimeEventQueue();
   store.patchSlice("stream", {
     events: []
   });
