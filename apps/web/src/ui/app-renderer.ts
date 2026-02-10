@@ -145,6 +145,33 @@ function setHidden(element: HTMLElement, hidden: boolean): void {
   element.classList.toggle("is-hidden", hidden);
 }
 
+function createNavigationStateChip(variant: string, label: string): HTMLSpanElement {
+  const chip = document.createElement("span");
+  chip.className = `nav-state-chip nav-state-${variant}`;
+  chip.textContent = label;
+  return chip;
+}
+
+function createTurnPhaseChip(phase: TurnExecutionPhase): HTMLSpanElement | null {
+  if (phase === "submitting") {
+    return createNavigationStateChip("pending", "Submitting");
+  }
+
+  if (phase === "running") {
+    return createNavigationStateChip("running", "Running");
+  }
+
+  if (phase === "interrupting") {
+    return createNavigationStateChip("pending", "Stopping");
+  }
+
+  if (phase === "error") {
+    return createNavigationStateChip("error", "Turn Error");
+  }
+
+  return null;
+}
+
 function renderEmptyMessage(message: string): HTMLParagraphElement {
   const paragraph = document.createElement("p");
   paragraph.className = "empty";
@@ -421,10 +448,30 @@ export class AppRenderer {
       const titleRow = document.createElement("div");
       titleRow.className = "list-item-title-row";
 
+      const badgeStack = document.createElement("span");
+      badgeStack.className = "list-item-badge-stack";
+
       const trustBadge = document.createElement("span");
       trustBadge.className = `workspace-badge workspace-badge-${workspace.trusted ? "trusted" : "restricted"}`;
       trustBadge.textContent = workspace.trusted ? "Trusted" : "Restricted";
-      titleRow.append(title, trustBadge);
+      badgeStack.append(trustBadge);
+
+      if (isSelected) {
+        badgeStack.append(createNavigationStateChip("current", "Current"));
+      }
+
+      if (isSelected) {
+        const turnPhaseChip = createTurnPhaseChip(state.stream.turnPhase);
+        if (turnPhaseChip) {
+          badgeStack.append(turnPhaseChip);
+        }
+      }
+
+      if (isSelected && state.session.error && state.stream.turnPhase !== "error") {
+        badgeStack.append(createNavigationStateChip("error", "Needs Attention"));
+      }
+
+      titleRow.append(title, badgeStack);
 
       const path = document.createElement("span");
       path.className = "list-item-path";
@@ -463,14 +510,26 @@ export class AppRenderer {
 
       const titleRow = document.createElement("div");
       titleRow.className = "list-item-title-row";
-      titleRow.append(title);
+      const badgeStack = document.createElement("span");
+      badgeStack.className = "list-item-badge-stack";
 
       if (thread.archived) {
-        const badge = document.createElement("span");
-        badge.className = "thread-badge";
-        badge.textContent = "Archived";
-        titleRow.append(badge);
+        badgeStack.append(createNavigationStateChip("archived", "Archived"));
       }
+
+      if (isSelected) {
+        badgeStack.append(createNavigationStateChip("current", "Current"));
+        const turnPhaseChip = createTurnPhaseChip(state.stream.turnPhase);
+        if (turnPhaseChip) {
+          badgeStack.append(turnPhaseChip);
+        }
+      }
+
+      if (isSelected && state.session.error && state.stream.turnPhase !== "error") {
+        badgeStack.append(createNavigationStateChip("error", "Needs Attention"));
+      }
+
+      titleRow.append(title, badgeStack);
 
       const threadId = document.createElement("span");
       threadId.className = "list-item-id";

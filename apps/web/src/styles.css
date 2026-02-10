@@ -318,6 +318,13 @@ form {
   gap: 0.4rem;
 }
 
+.list-item-badge-stack {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.22rem;
+}
+
 .workspace-item strong,
 .thread-item strong {
   font-size: 0.91rem;
@@ -339,6 +346,7 @@ form {
 .thread-item.is-selected {
   border-color: #78b5a9;
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px #5b9f91;
 }
 
 .workspace-badge {
@@ -364,17 +372,46 @@ form {
   color: #8a4f1a;
 }
 
-.thread-badge {
+.nav-state-chip {
   display: inline-flex;
   width: fit-content;
   align-items: center;
-  border: 1px solid #d4ac7c;
   border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.1rem 0.42rem;
+  letter-spacing: 0.02em;
+}
+
+.nav-state-current {
+  border-color: #9fbbe6;
+  background: #e7f0ff;
+  color: #1f4f8b;
+}
+
+.nav-state-running {
+  border-color: #8ecab9;
+  background: #ddf4ed;
+  color: #1d6252;
+}
+
+.nav-state-pending {
+  border-color: #d9c28d;
+  background: #fff4dd;
+  color: #7a5315;
+}
+
+.nav-state-error {
+  border-color: #e3aba0;
+  background: #ffe1db;
+  color: #8d2f1f;
+}
+
+.nav-state-archived {
+  border-color: #d4ac7c;
   background: #fff1df;
   color: #7e4b15;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
 }
 
 .thread-actions {
