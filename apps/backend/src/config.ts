@@ -12,8 +12,10 @@ export interface AppConfig {
   port: number;
   logLevel: LogLevel;
   authMode: AuthMode;
+  authPassword: string;
   sessionSecret: string;
   csrfSecret: string;
+  cookieSecure: boolean;
   sessionTtlMinutes: number;
   allowedWorkspaceRoots: string[];
 }
@@ -24,6 +26,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8787),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal", "silent"]).default("info"),
   AUTH_MODE: z.enum(["single_user"]).default("single_user"),
+  AUTH_PASSWORD: z.string().trim().min(12, "AUTH_PASSWORD must be at least 12 characters long"),
   SESSION_SECRET: z
     .string()
     .trim()
@@ -32,6 +35,7 @@ const envSchema = z.object({
     .string()
     .trim()
     .min(32, "CSRF_SECRET must be at least 32 characters long"),
+  COOKIE_SECURE: z.string().trim().optional(),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
   ALLOWED_WORKSPACE_ROOTS: z.string().trim().min(1)
 });
@@ -77,6 +81,22 @@ function formatZodError(error: z.ZodError): string {
   return `Invalid configuration: ${details}`;
 }
 
+function parseBooleanFlag(key: string, rawValue: string): boolean {
+  const normalized = rawValue.trim().toLowerCase();
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  throw new ConfigValidationError(
+    `Invalid configuration: ${key} must be a boolean-like value (true/false/1/0)`
+  );
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.safeParse(env);
 
@@ -86,6 +106,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const configData = parsed.data;
   const allowedWorkspaceRoots = parseAllowedWorkspaceRoots(configData.ALLOWED_WORKSPACE_ROOTS);
+  const cookieSecure =
+    configData.COOKIE_SECURE === undefined
+      ? configData.NODE_ENV === "production"
+      : parseBooleanFlag("COOKIE_SECURE", configData.COOKIE_SECURE);
 
   return {
     nodeEnv: configData.NODE_ENV,
@@ -93,8 +117,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: configData.PORT,
     logLevel: configData.LOG_LEVEL,
     authMode: configData.AUTH_MODE,
+    authPassword: configData.AUTH_PASSWORD,
     sessionSecret: configData.SESSION_SECRET,
     csrfSecret: configData.CSRF_SECRET,
+    cookieSecure,
     sessionTtlMinutes: configData.SESSION_TTL_MINUTES,
     allowedWorkspaceRoots
   };
@@ -103,6 +129,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 export function redactConfig(config: AppConfig): Record<string, unknown> {
   return {
     ...config,
+    authPassword: "[redacted]",
     sessionSecret: "[redacted]",
     csrfSecret: "[redacted]"
   };

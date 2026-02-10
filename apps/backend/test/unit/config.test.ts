@@ -8,6 +8,7 @@ function validEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv
     HOST: "127.0.0.1",
     PORT: "8787",
     AUTH_MODE: "single_user",
+    AUTH_PASSWORD: "pocketcodex-test-password",
     SESSION_SECRET: "session-secret-for-tests-1234567890",
     CSRF_SECRET: "csrf-secret-for-tests-123456789012",
     SESSION_TTL_MINUTES: "60",
@@ -23,6 +24,12 @@ describe("loadConfig", () => {
 
   it("rejects unknown LOG_LEVEL", () => {
     expect(() => loadConfig(validEnv({ LOG_LEVEL: "verbose" }))).toThrow(ConfigValidationError);
+  });
+
+  it("rejects malformed COOKIE_SECURE", () => {
+    expect(() => loadConfig(validEnv({ COOKIE_SECURE: "sometimes" }))).toThrow(
+      ConfigValidationError
+    );
   });
 
   it("rejects missing SESSION_SECRET", () => {
@@ -46,6 +53,7 @@ describe("loadConfig", () => {
     const config = loadConfig(validEnv());
     const redacted = redactConfig(config);
 
+    expect(redacted.authPassword).toBe("[redacted]");
     expect(redacted.sessionSecret).toBe("[redacted]");
     expect(redacted.csrfSecret).toBe("[redacted]");
   });

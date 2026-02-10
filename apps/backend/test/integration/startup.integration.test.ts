@@ -42,6 +42,7 @@ describe("startup integration", () => {
       HOST: "127.0.0.1",
       PORT: "8787",
       AUTH_MODE: "single_user",
+      AUTH_PASSWORD: "pocketcodex-test-password",
       SESSION_SECRET: "",
       CSRF_SECRET: "csrf-secret-for-tests-123456789012",
       SESSION_TTL_MINUTES: "60",

@@ -16,7 +16,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const config = loadConfig(options.env);
   const app = buildApp({
     logger: options.logger ?? true,
-    logLevel: config.logLevel
+    logLevel: config.logLevel,
+    authConfig: config
   });
   const address = await app.listen({ host: config.host, port: config.port });
 

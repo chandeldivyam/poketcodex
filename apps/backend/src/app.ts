@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 
 import Fastify from "fastify";
 
-import type { LogLevel } from "./config.js";
+import { authPlugin } from "./auth/plugin.js";
+import type { InMemorySessionStore } from "./auth/session-store.js";
+import type { AppConfig, LogLevel } from "./config.js";
 import { createLoggerOptions } from "./logger.js";
 
 export interface BuildAppOptions {
   logger?: boolean;
   logLevel?: LogLevel;
   loggerStream?: NodeJS.WritableStream;
+  authConfig?: AppConfig;
+  sessionStore?: InMemorySessionStore;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -36,6 +40,13 @@ export function buildApp(options: BuildAppOptions = {}) {
       return incomingRequestId ?? randomUUID();
     }
   });
+
+  if (options.authConfig) {
+    app.register(authPlugin, {
+      config: options.authConfig,
+      ...(options.sessionStore ? { sessionStore: options.sessionStore } : {})
+    });
+  }
 
   app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
