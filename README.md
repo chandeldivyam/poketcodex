@@ -23,6 +23,7 @@ Phase-0 monorepo scaffold for PocketCodex.
 - `pnpm test`
 - `pnpm build`
 - `pnpm dev`
+- `pnpm audit --audit-level=high`
 
 ## Environment
 

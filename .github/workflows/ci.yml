@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run quality gate commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          pnpm lint | tee artifacts/lint.log
+          pnpm typecheck | tee artifacts/typecheck.log
+          pnpm test:unit | tee artifacts/test-unit.log
+          pnpm test:integration | tee artifacts/test-integration.log
+          pnpm build | tee artifacts/build.log
+
+      - name: Upload quality gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-logs
+          path: artifacts/
+
+  backend-smoke:
+    name: Backend Smoke
+    runs-on: ubuntu-latest
+    needs:
+      - quality-gates
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        run: pnpm --filter @poketcodex/backend build
+
+      - name: Start backend and verify health endpoint
+        env:
+          NODE_ENV: test
+          HOST: 127.0.0.1
+          PORT: 8787
+          LOG_LEVEL: info
+          AUTH_MODE: single_user
+          AUTH_PASSWORD: ci-local-password
+          SESSION_SECRET: ci-session-secret-1234567890123456789012
+          CSRF_SECRET: ci-csrf-secret-123456789012345678901234
+          COOKIE_SECURE: false
+          SESSION_TTL_MINUTES: 60
+          ALLOWED_WORKSPACE_ROOTS: /home/runner/work
+        run: |
+          pnpm --filter @poketcodex/backend start &
+          BACKEND_PID=$!
+          trap 'kill ${BACKEND_PID}' EXIT
+          sleep 3
+          curl -fsS http://127.0.0.1:8787/api/health
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    needs:
+      - quality-gates
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
