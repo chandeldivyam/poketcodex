@@ -21,6 +21,10 @@ describe("loadConfig", () => {
     expect(() => loadConfig(validEnv({ PORT: portValue }))).toThrow(ConfigValidationError);
   });
 
+  it("rejects unknown LOG_LEVEL", () => {
+    expect(() => loadConfig(validEnv({ LOG_LEVEL: "verbose" }))).toThrow(ConfigValidationError);
+  });
+
   it("rejects missing SESSION_SECRET", () => {
     const env = validEnv();
     delete env.SESSION_SECRET;

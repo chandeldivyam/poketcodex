@@ -14,7 +14,10 @@ export interface StartServerOptions {
 
 export async function startServer(options: StartServerOptions = {}): Promise<RunningServer> {
   const config = loadConfig(options.env);
-  const app = buildApp({ logger: options.logger ?? true });
+  const app = buildApp({
+    logger: options.logger ?? true,
+    logLevel: config.logLevel
+  });
   const address = await app.listen({ host: config.host, port: config.port });
 
   app.log.info({ address, config: redactConfig(config) }, "backend started");
