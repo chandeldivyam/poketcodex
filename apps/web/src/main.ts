@@ -18,6 +18,7 @@ interface AppState {
   selectedWorkspaceId: string | null;
   threads: ThreadListItem[];
   selectedThreadId: string | null;
+  draftPrompt: string;
   events: string[];
 }
 
@@ -53,11 +54,13 @@ const state: AppState = {
   selectedWorkspaceId: readStorageValue(STORAGE_SELECTED_WORKSPACE_KEY),
   threads: [],
   selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY),
+  draftPrompt: "",
   events: []
 };
 
 let workspaceSocket: ReconnectingWorkspaceSocket | undefined;
 let workspaceSocketWorkspaceId: string | null = null;
+let renderScheduled = false;
 
 function readStorageValue(key: string): string | null {
   try {
@@ -131,6 +134,27 @@ function appendEvent(line: string): void {
   if (state.events.length > MAX_STORED_EVENTS) {
     state.events.splice(0, state.events.length - MAX_STORED_EVENTS);
   }
+}
+
+function scheduleRender(): void {
+  if (renderScheduled) {
+    return;
+  }
+
+  renderScheduled = true;
+
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(() => {
+      renderScheduled = false;
+      render();
+    });
+    return;
+  }
+
+  window.setTimeout(() => {
+    renderScheduled = false;
+    render();
+  }, 16);
 }
 
 function render(): void {
@@ -235,7 +259,7 @@ function render(): void {
             <form id="turn-form">
               <label>
                 Prompt
-                <textarea name="prompt" rows="3" placeholder="Ask Codex..." required></textarea>
+                <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required>${escapeHtml(state.draftPrompt)}</textarea>
               </label>
               <div class="turn-actions">
                 <button type="submit" ${threadActionsDisabled ? "disabled" : ""}>Start Turn</button>
@@ -342,11 +366,16 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
     workspaceId,
     onStateChange: (nextState) => {
       state.socketState = nextState;
-      render();
+      scheduleRender();
     },
     onMessage: (payload) => {
-      appendEvent(formatWorkspaceEvent(payload));
-      render();
+      const formattedEvent = formatWorkspaceEvent(payload);
+      if (formattedEvent.length === 0) {
+        return;
+      }
+
+      appendEvent(formattedEvent);
+      scheduleRender();
     }
   });
 
@@ -529,15 +558,18 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     return;
   }
 
+  const normalizedPrompt = prompt.trim();
+  state.draftPrompt = normalizedPrompt;
+
   clearError();
   setBusy(true);
-  appendEvent(`Prompt: ${prompt.trim()}`);
+  appendEvent(`Prompt: ${normalizedPrompt}`);
   render();
 
   try {
     const csrfToken = requireCsrfToken();
     const payload: Record<string, unknown> = {
-      prompt: prompt.trim(),
+      prompt: normalizedPrompt,
       ...(state.selectedThreadId ? { threadId: state.selectedThreadId } : {})
     };
 
@@ -548,6 +580,7 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     }
 
     appendEvent("Turn started");
+    state.draftPrompt = "";
     form.reset();
     await loadThreads(workspace.workspaceId, false);
   } catch (error: unknown) {
@@ -618,6 +651,11 @@ function attachHandlers(): void {
       void handleTurnSubmit(event);
     });
   }
+
+  const turnPromptInput = document.querySelector<HTMLTextAreaElement>("#turn-prompt");
+  turnPromptInput?.addEventListener("input", () => {
+    state.draftPrompt = turnPromptInput.value;
+  });
 
   document.querySelectorAll<HTMLButtonElement>("[data-action='select-workspace']").forEach((button) => {
     button.addEventListener("click", () => {

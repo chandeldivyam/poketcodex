@@ -105,6 +105,26 @@ describe("formatWorkspaceEvent", () => {
     expect(message).toBe("#8 turn/completed status=completed turnId=turn-1");
   });
 
+  it("suppresses noisy skills update notifications", () => {
+    const message = formatWorkspaceEvent({
+      type: "workspace_runtime_event",
+      event: {
+        sequence: 9,
+        kind: "notification",
+        payload: {
+          method: "codex/event/skills_update_available",
+          params: {
+            msg: {
+              type: "skills_update_available"
+            }
+          }
+        }
+      }
+    });
+
+    expect(message).toBe("");
+  });
+
   it("formats state and stderr runtime entries", () => {
     expect(
       formatWorkspaceEvent({

@@ -7,6 +7,7 @@ export interface ThreadListItem {
 }
 
 const THREAD_SUMMARY_KEYS = ["status", "threadId", "turnId", "itemId", "reason"] as const;
+const NOISE_EVENT_METHODS = new Set(["codex/event/skills_update_available"]);
 
 function extractThreadIdFromUnknown(value: unknown): string | null {
   if (!value || typeof value !== "object") {
@@ -185,6 +186,10 @@ export function formatWorkspaceEvent(eventPayload: unknown): string {
   const prefix = sequence >= 0 ? `#${sequence}` : "#?";
 
   if (method) {
+    if (NOISE_EVENT_METHODS.has(method)) {
+      return "";
+    }
+
     const summary = formatParamsSummary(params);
     return summary ? `${prefix} ${method} ${summary}` : `${prefix} ${method}`;
   }
