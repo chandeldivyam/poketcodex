@@ -1,20 +1,39 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
 :root {
-  --bg-1: #f7f4ea;
-  --bg-2: #d8ead9;
+  --font-display: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+
+  --space-1: 0.35rem;
+  --space-2: 0.55rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.3rem;
+  --space-6: 1.7rem;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+
+  --bg-1: #f4f2e9;
+  --bg-2: #d0e4d8;
   --panel-bg: rgba(255, 255, 255, 0.88);
-  --ink: #1f2a2f;
-  --ink-muted: #4a5e65;
-  --border: #c6d8cf;
+  --ink: #1e2a2f;
+  --ink-muted: #4e6268;
+  --border: #c4d6cc;
+
   --accent: #0d6e63;
-  --accent-soft: #daf3ef;
-  --accent-secondary-bg: #f2f7f4;
-  --accent-secondary-border: #a6c5bb;
+  --accent-soft: #d8f2ee;
+  --accent-secondary-bg: #eef5f1;
+  --accent-secondary-border: #9cbeb2;
+
   --danger: #a8331f;
-  --danger-dark: #862312;
-  --warning: #a9441d;
-  --shadow: 0 18px 42px rgba(19, 53, 47, 0.15);
+  --danger-dark: #83210f;
+  --warning: #9f4a22;
+
+  --shadow-sm: 0 8px 20px rgba(19, 53, 47, 0.08);
+  --shadow-lg: 0 20px 46px rgba(19, 53, 47, 0.14);
 }
 
 * {
@@ -24,11 +43,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: var(--font-body);
   color: var(--ink);
   background:
-    radial-gradient(circle at 10% 8%, rgba(57, 160, 140, 0.18), transparent 34%),
-    radial-gradient(circle at 86% 12%, rgba(248, 185, 104, 0.22), transparent 42%),
+    radial-gradient(circle at 12% 9%, rgba(57, 160, 140, 0.16), transparent 34%),
+    radial-gradient(circle at 86% 8%, rgba(248, 185, 104, 0.2), transparent 40%),
     linear-gradient(150deg, var(--bg-1), var(--bg-2));
 }
 
@@ -37,44 +56,59 @@ body {
 }
 
 .app-shell {
-  width: min(100%, 1200px);
+  width: min(100%, 1320px);
   margin: 0 auto;
-  padding: 1rem;
+  padding: var(--space-4);
   display: grid;
-  gap: 0.9rem;
+  gap: var(--space-4);
 }
 
 .app-header {
   background: var(--panel-bg);
   border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 1.1rem;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.header-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
 }
 
 .app-header h1 {
   margin: 0;
-  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
-  font-size: clamp(1.6rem, 4vw, 2rem);
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 4vw, 2rem);
 }
 
-.app-header p {
-  margin: 0.35rem 0 0;
+.subhead {
+  margin: 0;
   color: var(--ink-muted);
 }
 
 .status-row {
-  margin-top: 0.9rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .status-chip {
   font-size: 0.82rem;
   border-radius: 999px;
-  padding: 0.28rem 0.7rem;
+  padding: 0.3rem 0.72rem;
   border: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -101,38 +135,81 @@ body {
 }
 
 .error-banner {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid #ebc4b8;
   background: #ffece7;
   color: var(--warning);
-  padding: 0.8rem 1rem;
+  padding: var(--space-3) var(--space-4);
   font-size: 0.95rem;
 }
 
 .panel-grid {
   display: grid;
-  gap: 0.9rem;
+  gap: var(--space-4);
   grid-template-columns: 1fr;
+}
+
+.nav-column {
+  display: grid;
+  gap: var(--space-4);
 }
 
 .panel {
   background: var(--panel-bg);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 0.95rem;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
 }
 
 .panel h2 {
-  margin: 0 0 0.65rem;
-  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
   font-size: 1.03rem;
+}
+
+.conversation-panel {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+
+.conversation-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.conversation-header h2 {
+  margin: 0;
+}
+
+.conversation-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #f7fbf8;
+  padding: 0.28rem 0.68rem;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+.context-chip strong {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 label {
   display: grid;
-  gap: 0.35rem;
-  font-size: 0.9rem;
+  gap: var(--space-1);
+  font-size: 0.88rem;
   color: var(--ink-muted);
 }
 
@@ -147,9 +224,9 @@ input,
 textarea {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 0.65rem 0.75rem;
-  background: rgba(255, 255, 255, 0.85);
+  border-radius: var(--radius-sm);
+  padding: 0.67rem 0.74rem;
+  background: rgba(255, 255, 255, 0.88);
   color: var(--ink);
 }
 
@@ -159,8 +236,8 @@ textarea {
 
 button {
   border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 0.58rem 0.85rem;
+  border-radius: var(--radius-sm);
+  padding: 0.58rem 0.9rem;
   min-height: 44px;
   background: linear-gradient(160deg, #108577, #0d6e63);
   color: #ffffff;
@@ -197,15 +274,16 @@ button.button-danger {
 
 form {
   display: grid;
-  gap: 0.6rem;
+  gap: var(--space-3);
 }
 
 .list-container {
-  margin-top: 0.7rem;
+  margin-top: var(--space-3);
   max-height: 280px;
   overflow: auto;
   display: grid;
   gap: 0.45rem;
+  padding-right: 0.15rem;
 }
 
 .workspace-item,
@@ -214,7 +292,7 @@ form {
   text-align: left;
   background: #f8fbf9;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   padding: 0.65rem 0.75rem;
   min-height: 56px;
   color: var(--ink);
@@ -224,12 +302,12 @@ form {
 
 .workspace-item strong,
 .thread-item strong {
-  font-size: 0.92rem;
+  font-size: 0.91rem;
 }
 
 .workspace-item span,
 .thread-item span {
-  font-size: 0.78rem;
+  font-size: 0.77rem;
   color: var(--ink-muted);
   line-break: anywhere;
 }
@@ -255,48 +333,61 @@ form {
 
 .thread-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .thread-actions button,
 .status-row button {
-  flex: 1 1 125px;
-}
-
-.selected-thread {
-  margin: 0.55rem 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-muted);
+  flex: 1 1 120px;
 }
 
 .turn-actions {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--space-2);
   grid-template-columns: 1fr;
 }
 
+.event-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.event-toolbar-label {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
 .event-stream {
-  margin-top: 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: rgba(246, 251, 247, 0.9);
-  max-height: 270px;
+  max-height: min(56vh, 600px);
   overflow: auto;
-  padding: 0.5rem;
+  padding: 0.55rem;
 }
 
 .event-stream ol {
   margin: 0;
-  padding-left: 1rem;
+  padding: 0;
+  list-style: none;
   display: grid;
-  gap: 0.36rem;
+  gap: 0.46rem;
 }
 
 .event-stream li {
   font-size: 0.8rem;
   line-height: 1.35;
   color: #23343a;
+  border: 1px solid #d5e2dc;
+  border-radius: var(--radius-sm);
+  background: #fbfdfa;
+  padding: 0.55rem 0.62rem;
 }
 
 .empty {
@@ -305,13 +396,20 @@ form {
   color: var(--ink-muted);
 }
 
-@media (min-width: 860px) {
-  .panel-grid {
-    grid-template-columns: 1.1fr 1fr 1.1fr;
+@media (min-width: 900px) {
+  .app-shell {
+    padding: var(--space-5);
+    gap: var(--space-5);
   }
 
-  .app-shell {
-    padding: 1.35rem;
+  .app-header {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+
+  .panel-grid {
+    grid-template-columns: minmax(290px, 350px) minmax(0, 1fr);
+    align-items: start;
   }
 
   .turn-actions {

@@ -24,7 +24,9 @@ export interface AppDomRefs {
   turnPromptInput: HTMLTextAreaElement;
   startTurnButton: HTMLButtonElement;
   interruptTurnButton: HTMLButtonElement;
+  eventStream: HTMLElement;
   eventList: HTMLOListElement;
+  jumpLatestButton: HTMLButtonElement;
 }
 
 function requireElement<TElement extends Element>(root: ParentNode, selector: string): TElement {
@@ -40,8 +42,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
   root.innerHTML = `
     <main class="app-shell">
       <header class="app-header">
-        <h1>PocketCodex</h1>
-        <p>Mobile Codex control plane</p>
+        <div class="header-copy">
+          <p class="eyebrow">Workspace Runtime Console</p>
+          <h1>PocketCodex</h1>
+          <p class="subhead">Mobile Codex control plane</p>
+        </div>
         <div class="status-row">
           <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
           <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh</button>
@@ -66,35 +71,42 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
       </section>
 
       <section class="panel-grid is-hidden" data-role="app-panels">
-        <section class="panel workspace-panel">
-          <h2>Workspaces</h2>
-          <form id="workspace-form">
-            <label>
-              Absolute Path
-              <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required data-role="workspace-path" />
-            </label>
-            <label>
-              Display Name
-              <input type="text" name="displayName" placeholder="My Repo" data-role="workspace-display-name" />
-            </label>
-            <button type="submit" data-role="workspace-submit">Add Workspace</button>
-          </form>
-          <div class="list-container" data-role="workspace-list"></div>
-        </section>
+        <aside class="nav-column">
+          <section class="panel workspace-panel">
+            <h2>Workspaces</h2>
+            <form id="workspace-form">
+              <label>
+                Absolute Path
+                <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required data-role="workspace-path" />
+              </label>
+              <label>
+                Display Name
+                <input type="text" name="displayName" placeholder="My Repo" data-role="workspace-display-name" />
+              </label>
+              <button type="submit" data-role="workspace-submit">Add Workspace</button>
+            </form>
+            <div class="list-container" data-role="workspace-list"></div>
+          </section>
 
-        <section class="panel thread-panel">
-          <h2>Threads</h2>
-          <div class="thread-actions">
-            <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
-            <button type="button" data-role="start-thread">Start Thread</button>
+          <section class="panel thread-panel">
+            <h2>Threads</h2>
+            <div class="thread-actions">
+              <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
+              <button type="button" data-role="start-thread">Start Thread</button>
+            </div>
+            <div class="list-container" data-role="thread-list"></div>
+          </section>
+        </aside>
+
+        <section class="panel conversation-panel event-panel">
+          <div class="conversation-header">
+            <h2>Turn Console</h2>
+            <div class="conversation-context">
+              <span class="context-chip">Workspace: <strong data-role="selected-workspace">None</strong></span>
+              <span class="context-chip">Thread: <strong data-role="selected-thread">None</strong></span>
+            </div>
           </div>
-          <div class="list-container" data-role="thread-list"></div>
-          <p class="selected-thread">Workspace: <span data-role="selected-workspace">None</span></p>
-          <p class="selected-thread">Thread: <span data-role="selected-thread">None</span></p>
-        </section>
 
-        <section class="panel event-panel">
-          <h2>Turn Console</h2>
           <form id="turn-form">
             <label>
               Prompt
@@ -105,7 +117,13 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
               <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
             </div>
           </form>
-          <div class="event-stream">
+
+          <div class="event-toolbar">
+            <span class="event-toolbar-label">Live runtime events</span>
+            <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+          </div>
+
+          <div class="event-stream" data-role="event-stream">
             <ol data-role="event-list">
               <li>Awaiting events...</li>
             </ol>
@@ -141,6 +159,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
     startTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='start-turn']"),
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
-    eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']")
+    eventStream: requireElement<HTMLElement>(root, "[data-role='event-stream']"),
+    eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']"),
+    jumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='jump-latest']")
   };
 }
