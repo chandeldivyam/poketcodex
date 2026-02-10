@@ -3,11 +3,15 @@ import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 
 import { authPlugin } from "./auth/plugin.js";
+import type { WorkspaceAppServerPool } from "./codex/workspace-app-server-pool.js";
+import { workspaceEventsPlugin } from "./events/workspace-events-plugin.js";
 import type { InMemorySessionStore } from "./auth/session-store.js";
 import type { AppConfig, LogLevel } from "./config.js";
 import { createLoggerOptions } from "./logger.js";
 import { threadPlugin } from "./threads/plugin.js";
 import type { ThreadService } from "./threads/service.js";
+import { turnPlugin } from "./turns/plugin.js";
+import type { TurnService } from "./turns/service.js";
 import { workspacePlugin } from "./workspaces/plugin.js";
 import type { WorkspaceService } from "./workspaces/service.js";
 
@@ -19,6 +23,8 @@ export interface BuildAppOptions {
   sessionStore?: InMemorySessionStore;
   workspaceService?: WorkspaceService;
   threadService?: ThreadService;
+  turnService?: TurnService;
+  runtimePool?: WorkspaceAppServerPool;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -63,6 +69,18 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (options.threadService) {
     app.register(threadPlugin, {
       threadService: options.threadService
+    });
+  }
+
+  if (options.turnService) {
+    app.register(turnPlugin, {
+      turnService: options.turnService
+    });
+  }
+
+  if (options.runtimePool) {
+    app.register(workspaceEventsPlugin, {
+      runtimePool: options.runtimePool
     });
   }
 

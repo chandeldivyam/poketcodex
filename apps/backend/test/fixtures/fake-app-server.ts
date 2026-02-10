@@ -7,6 +7,7 @@ interface RpcRequest {
 }
 
 let isInitialized = false;
+let turnCounter = 1;
 const threadState = new Map<string, { id: string; title?: string; archived: boolean }>([
   [
     "thread-1",
@@ -227,6 +228,82 @@ function handleRequest(request: RpcRequest): void {
           }
         });
       }
+      return;
+    case "turn/start":
+      if (!requireInitialized(request)) {
+        return;
+      }
+      {
+        const turnId = `turn-${turnCounter}`;
+        const itemId = `item-${turnCounter}`;
+        turnCounter += 1;
+
+        sendMessage({
+          method: "turn/started",
+          params: {
+            turnId
+          }
+        });
+        sendMessage({
+          method: "item/started",
+          params: {
+            turnId,
+            itemId
+          }
+        });
+        sendMessage({
+          method: "item/completed",
+          params: {
+            turnId,
+            itemId
+          }
+        });
+        sendMessage({
+          method: "turn/completed",
+          params: {
+            turnId,
+            status: "completed"
+          }
+        });
+
+        sendMessage({
+          id: request.id,
+          result: {
+            turnId,
+            status: "completed"
+          }
+        });
+      }
+      return;
+    case "turn/steer":
+      if (!requireInitialized(request)) {
+        return;
+      }
+      sendMessage({
+        id: request.id,
+        result: {
+          ok: true,
+          action: "steer"
+        }
+      });
+      return;
+    case "turn/interrupt":
+      if (!requireInitialized(request)) {
+        return;
+      }
+      sendMessage({
+        method: "turn/interrupted",
+        params: {
+          status: "interrupted"
+        }
+      });
+      sendMessage({
+        id: request.id,
+        result: {
+          ok: true,
+          status: "interrupted"
+        }
+      });
       return;
     case "shutdown":
       sendMessage({

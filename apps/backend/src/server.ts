@@ -4,6 +4,7 @@ import { WorkspaceAppServerPool } from "./codex/workspace-app-server-pool.js";
 import { loadConfig, redactConfig, type AppConfig } from "./config.js";
 import { ThreadMetadataStore } from "./threads/metadata-store.js";
 import { ThreadService } from "./threads/service.js";
+import { TurnService } from "./turns/service.js";
 import { WorkspaceService } from "./workspaces/service.js";
 import { WorkspaceStore } from "./workspaces/store.js";
 
@@ -29,12 +30,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   });
   const threadMetadataStore = new ThreadMetadataStore(config.sqliteDatabasePath);
   const threadService = new ThreadService(workspaceRuntimePool, threadMetadataStore);
+  const turnService = new TurnService(workspaceRuntimePool);
   const app = buildApp({
     logger: options.logger ?? true,
     logLevel: config.logLevel,
     authConfig: config,
     workspaceService,
-    threadService
+    threadService,
+    turnService,
+    runtimePool: workspaceRuntimePool
   });
 
   let address: string;

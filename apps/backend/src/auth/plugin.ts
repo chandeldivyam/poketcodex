@@ -68,6 +68,11 @@ const authPluginImplementation: FastifyPluginAsync<AuthPluginOptions> = async (a
   await app.register(cookie, { secret: config.sessionSecret });
 
   app.addHook("onRequest", async (request, reply) => {
+    const session = readSessionFromCookie(request, sessionStore);
+    if (session) {
+      request.authSession = session;
+    }
+
     if (!MUTATING_METHODS.has(request.method)) {
       return;
     }
@@ -75,8 +80,6 @@ const authPluginImplementation: FastifyPluginAsync<AuthPluginOptions> = async (a
     if (request.url.startsWith("/api/auth/login")) {
       return;
     }
-
-    const session = readSessionFromCookie(request, sessionStore);
 
     if (!session) {
       reply.code(401).send({
