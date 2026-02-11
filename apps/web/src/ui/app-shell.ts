@@ -26,6 +26,8 @@ export interface AppDomRefs {
   turnPromptInput: HTMLTextAreaElement;
   turnStatusChip: HTMLElement;
   turnStatusText: HTMLElement;
+  backgroundTerminalRow: HTMLElement;
+  backgroundTerminalText: HTMLElement;
   startTurnButton: HTMLButtonElement;
   interruptTurnButton: HTMLButtonElement;
   transcriptStream: HTMLElement;
@@ -35,6 +37,9 @@ export interface AppDomRefs {
   eventList: HTMLOListElement;
   toggleStatusEventsButton: HTMLButtonElement;
   toggleInternalEventsButton: HTMLButtonElement;
+  settingsShowStatusEventsInput: HTMLInputElement;
+  settingsShowInternalEventsInput: HTMLInputElement;
+  settingsCompactStatusBurstsInput: HTMLInputElement;
   jumpLatestButton: HTMLButtonElement;
 }
 
@@ -120,6 +125,25 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             </div>
             <div class="list-container" data-role="thread-list"></div>
           </section>
+
+          <section class="panel settings-panel">
+            <h2>Settings</h2>
+            <div class="settings-note">Runtime mode: YOLO (approvals off)</div>
+            <div class="settings-form">
+              <label class="settings-toggle">
+                <input type="checkbox" data-role="settings-show-status-events" />
+                <span>Show status events</span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" data-role="settings-show-internal-events" />
+                <span>Show internal events</span>
+              </label>
+              <label class="settings-toggle">
+                <input type="checkbox" data-role="settings-compact-status-bursts" />
+                <span>Compact status bursts</span>
+              </label>
+            </div>
+          </section>
         </aside>
 
         <section class="main-column">
@@ -155,6 +179,10 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             <div class="turn-status" data-role="turn-status">
               <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
               <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
+            </div>
+            <div class="background-terminal is-hidden" data-role="background-terminal-row">
+              <span class="background-terminal-chip">Background Terminal</span>
+              <span class="background-terminal-text" data-role="background-terminal-text">Idle</span>
             </div>
             <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
             <div class="turn-actions">
@@ -239,6 +267,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
     turnStatusChip: requireElement<HTMLElement>(root, "[data-role='turn-status-chip']"),
     turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
+    backgroundTerminalRow: requireElement<HTMLElement>(root, "[data-role='background-terminal-row']"),
+    backgroundTerminalText: requireElement<HTMLElement>(root, "[data-role='background-terminal-text']"),
     startTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='start-turn']"),
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
     transcriptStream: requireElement<HTMLElement>(root, "[data-role='transcript-stream']"),
@@ -248,6 +278,12 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']"),
     toggleStatusEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='toggle-status-events']"),
     toggleInternalEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='toggle-internal-events']"),
+    settingsShowStatusEventsInput: requireElement<HTMLInputElement>(root, "[data-role='settings-show-status-events']"),
+    settingsShowInternalEventsInput: requireElement<HTMLInputElement>(root, "[data-role='settings-show-internal-events']"),
+    settingsCompactStatusBurstsInput: requireElement<HTMLInputElement>(
+      root,
+      "[data-role='settings-compact-status-bursts']"
+    ),
     jumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='jump-latest']")
   };
 }

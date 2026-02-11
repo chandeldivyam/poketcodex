@@ -565,6 +565,35 @@ form {
   flex-wrap: wrap;
 }
 
+.settings-panel {
+  border-top: 1px solid var(--border);
+}
+
+.settings-note {
+  margin: 0 0 var(--space-2);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+.settings-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+
+.settings-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .workspace-disclosure {
   margin-bottom: var(--space-2);
 }
@@ -660,6 +689,33 @@ form {
   margin: 0;
   font-size: 0.68rem;
   color: var(--ink-muted);
+}
+
+.background-terminal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.background-terminal-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+}
+
+.background-terminal-text {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  line-break: anywhere;
 }
 
 /* ── Transcript toolbar ── */
@@ -1221,10 +1277,14 @@ form {
     width: min(280px, 85vw);
   }
 
-  /* Hide secondary header actions on phone — available in sidebar */
-  .status-row [data-role="refresh-workspaces"],
-  .status-row [data-role="reconnect-events"] {
-    display: none;
+  .status-row {
+    gap: var(--space-1);
+  }
+
+  .status-row button {
+    padding: 0.25rem 0.5rem;
+    min-height: 30px;
+    font-size: 0.74rem;
   }
 
   .conversation-header {
@@ -1264,6 +1324,10 @@ form {
 
   .turn-shortcuts {
     display: none;
+  }
+
+  .settings-panel {
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom, 0px));
   }
 
   .event-stream {

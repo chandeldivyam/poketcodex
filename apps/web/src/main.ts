@@ -41,6 +41,7 @@ const STORAGE_SELECTED_WORKSPACE_KEY = "poketcodex.selectedWorkspaceId";
 const STORAGE_SELECTED_THREAD_KEY = "poketcodex.selectedThreadId";
 const STORAGE_SHOW_INTERNAL_EVENTS_KEY = "poketcodex.showInternalEvents";
 const STORAGE_SHOW_STATUS_EVENTS_KEY = "poketcodex.showStatusEvents";
+const STORAGE_COMPACT_STATUS_BURSTS_KEY = "poketcodex.compactStatusBursts";
 const MAX_STORED_EVENTS = 240;
 const RUNTIME_EVENT_BATCH_MS = 48;
 const MAX_TRANSCRIPT_ITEMS = 320;
@@ -128,6 +129,162 @@ function parseThreadStatusSignal(method: string, params: Record<string, unknown>
   return null;
 }
 
+function commandDisplayFromParams(params: Record<string, unknown>): string | null {
+  const command = params.command;
+  if (Array.isArray(command)) {
+    const parts = command.filter((part): part is string => typeof part === "string");
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+  }
+
+  if (typeof command === "string" && command.length > 0) {
+    return command;
+  }
+
+  return null;
+}
+
+function backgroundProcessKeyFromParams(params: Record<string, unknown>): string | null {
+  return (
+    asNonEmptyString(params.processId) ??
+    asNonEmptyString(params.process_id) ??
+    asNonEmptyString(params.callId) ??
+    asNonEmptyString(params.call_id)
+  );
+}
+
+function isUnifiedExecSource(params: Record<string, unknown>): boolean {
+  const source = asNonEmptyString(params.source)?.toLowerCase();
+  if (!source) {
+    return false;
+  }
+
+  return source.includes("unified");
+}
+
+function methodMatchesAny(method: string, tokens: readonly string[]): boolean {
+  return tokens.some((token) => method.includes(token));
+}
+
+function updateBackgroundTerminalState(): void {
+  const activeCount = activeBackgroundTerminalProcesses.size;
+  const latestCommand =
+    activeCount > 0 ? [...activeBackgroundTerminalProcesses.values()][activeCount - 1] ?? null : null;
+
+  store.updateSlice("stream", (stream) => {
+    const waiting = activeCount > 0 && stream.backgroundTerminalWaiting;
+
+    if (
+      stream.backgroundTerminalActiveCount === activeCount &&
+      stream.backgroundTerminalLatestCommand === latestCommand &&
+      stream.backgroundTerminalWaiting === waiting
+    ) {
+      return stream;
+    }
+
+    return {
+      ...stream,
+      backgroundTerminalActiveCount: activeCount,
+      backgroundTerminalLatestCommand: latestCommand,
+      backgroundTerminalWaiting: waiting
+    };
+  });
+}
+
+function clearBackgroundTerminalState(): void {
+  activeBackgroundTerminalProcesses.clear();
+  store.updateSlice("stream", (stream) => {
+    if (
+      stream.backgroundTerminalActiveCount === 0 &&
+      stream.backgroundTerminalLatestCommand === null &&
+      stream.backgroundTerminalWaiting === false
+    ) {
+      return stream;
+    }
+
+    return {
+      ...stream,
+      backgroundTerminalActiveCount: 0,
+      backgroundTerminalLatestCommand: null,
+      backgroundTerminalWaiting: false
+    };
+  });
+}
+
+function applyBackgroundTerminalSignal(method: string, params: Record<string, unknown>): void {
+  const normalizedMethod = method.toLowerCase();
+  const processKey = backgroundProcessKeyFromParams(params);
+
+  const isExecBegin = methodMatchesAny(normalizedMethod, [
+    "exec_command_begin",
+    "exec_command/begin",
+    "tool_call_begin",
+    "tool_call/begin"
+  ]);
+  const isExecEnd = methodMatchesAny(normalizedMethod, [
+    "exec_command_end",
+    "exec_command/end",
+    "tool_call_end",
+    "tool_call/end"
+  ]);
+  const isTerminalInteraction = methodMatchesAny(normalizedMethod, [
+    "terminal_interaction",
+    "terminal/interaction",
+    "write_stdin",
+    "write-stdin",
+    "terminal/write_stdin"
+  ]);
+
+  if (isExecBegin) {
+    if (!processKey || !isUnifiedExecSource(params)) {
+      return;
+    }
+
+    activeBackgroundTerminalProcesses.set(processKey, commandDisplayFromParams(params) ?? processKey);
+    store.updateSlice("stream", (stream) => {
+      return {
+        ...stream,
+        backgroundTerminalWaiting: false
+      };
+    });
+    updateBackgroundTerminalState();
+    return;
+  }
+
+  if (isExecEnd) {
+    if (!processKey) {
+      return;
+    }
+
+    activeBackgroundTerminalProcesses.delete(processKey);
+    updateBackgroundTerminalState();
+    return;
+  }
+
+  if (isTerminalInteraction) {
+    if (!processKey || !activeBackgroundTerminalProcesses.has(processKey)) {
+      return;
+    }
+
+    const stdinChars = asNonEmptyString(params.stdin) ?? asNonEmptyString(params.chars);
+    const isPollingWait = stdinChars === null;
+    const latestCommand = commandDisplayFromParams(params);
+    if (latestCommand) {
+      activeBackgroundTerminalProcesses.set(processKey, latestCommand);
+    }
+
+    store.updateSlice("stream", (stream) => {
+      const waiting = activeBackgroundTerminalProcesses.size > 0 && isPollingWait;
+      return {
+        ...stream,
+        backgroundTerminalWaiting: waiting
+      };
+    });
+    updateBackgroundTerminalState();
+  }
+}
+
 function readStorageValue(key: string): string | null {
   try {
     const value = window.localStorage.getItem(key);
@@ -197,8 +354,12 @@ const initialState: AppState = {
     events: [],
     showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
     showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
+    compactStatusBursts: readStorageBoolean(STORAGE_COMPACT_STATUS_BURSTS_KEY, true),
     turnPhase: "idle",
-    turnStartedAtMs: null
+    turnStartedAtMs: null,
+    backgroundTerminalActiveCount: 0,
+    backgroundTerminalLatestCommand: null,
+    backgroundTerminalWaiting: false
   }
 };
 
@@ -220,6 +381,7 @@ const pendingRuntimeEvents: Array<{
 }> = [];
 const pendingChangedSlices = new Set<AppStateKey>();
 const draftCacheByContext = new Map<string, string>();
+const activeBackgroundTerminalProcesses = new Map<string, string>();
 type RetryAction = {
   label: string;
   run: () => Promise<void>;
@@ -537,6 +699,13 @@ function setShowStatusEvents(showStatusEvents: boolean): void {
   });
 }
 
+function setCompactStatusBursts(compactStatusBursts: boolean): void {
+  writeStorageBoolean(STORAGE_COMPACT_STATUS_BURSTS_KEY, compactStatusBursts);
+  store.patchSlice("stream", {
+    compactStatusBursts
+  });
+}
+
 function setTurnExecutionPhase(
   turnPhase: TurnExecutionPhase,
   options: {
@@ -761,6 +930,8 @@ function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unk
   if (!notification) {
     return;
   }
+
+  applyBackgroundTerminalSignal(notification.method, notification.params);
 
   const isTranscriptMethod = notification.method.startsWith("turn/") || notification.method.startsWith("item/");
   if (!isTranscriptMethod) {
@@ -1308,6 +1479,7 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
 
 function disconnectWorkspaceEvents(): void {
   clearRuntimeEventQueue();
+  clearBackgroundTerminalState();
 
   if (workspaceSocket) {
     workspaceSocket.disconnect();
@@ -1362,6 +1534,7 @@ async function loginWithPassword(password: string): Promise<void> {
   });
   draftCacheByContext.clear();
   clearRuntimeEventQueue();
+  clearBackgroundTerminalState();
   eventSequence = 0;
 
   if (loginResponse.authenticated) {
@@ -1465,8 +1638,12 @@ async function handleLogout(): Promise<void> {
       events: [],
       showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
       showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
+      compactStatusBursts: readStorageBoolean(STORAGE_COMPACT_STATUS_BURSTS_KEY, true),
       turnPhase: "idle",
-      turnStartedAtMs: null
+      turnStartedAtMs: null,
+      backgroundTerminalActiveCount: 0,
+      backgroundTerminalLatestCommand: null,
+      backgroundTerminalWaiting: false
     }
   });
   draftCacheByContext.clear();
@@ -1775,6 +1952,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
 
   clearError();
   clearRuntimeEventQueue();
+  clearBackgroundTerminalState();
   store.patchSlice("stream", {
     events: [],
     turnPhase: "idle",
@@ -1911,6 +2089,18 @@ function attachHandlers(): void {
 
   dom.toggleInternalEventsButton.addEventListener("click", () => {
     setShowInternalEvents(!store.getState().stream.showInternalEvents);
+  });
+
+  dom.settingsShowStatusEventsInput.addEventListener("change", () => {
+    setShowStatusEvents(dom.settingsShowStatusEventsInput.checked);
+  });
+
+  dom.settingsShowInternalEventsInput.addEventListener("change", () => {
+    setShowInternalEvents(dom.settingsShowInternalEventsInput.checked);
+  });
+
+  dom.settingsCompactStatusBurstsInput.addEventListener("change", () => {
+    setCompactStatusBursts(dom.settingsCompactStatusBurstsInput.checked);
   });
 
   dom.refreshThreadsButton.addEventListener("click", () => {

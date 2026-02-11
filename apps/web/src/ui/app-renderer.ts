@@ -359,6 +359,13 @@ export class AppRenderer {
   private turnStatusTimer: number | undefined;
   private readonly transcriptExpandedTextKeys = new Set<string>();
   private readonly transcriptOpenDetailKeys = new Set<string>();
+  private lastRenderedTranscriptThreadId: string | null = null;
+  private lastRenderedTranscriptRef: ThreadTranscriptState | null = null;
+  private lastRenderedTranscriptPlaceholder = "";
+  private lastRenderedEventsRef: TimelineEventEntry[] | null = null;
+  private lastRenderedShowInternalEvents = false;
+  private lastRenderedShowStatusEvents = false;
+  private lastRenderedCompactStatusBursts = true;
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
@@ -419,6 +426,7 @@ export class AppRenderer {
     if (changedSlices.has("stream")) {
       this.renderDraftPrompt();
       this.renderTurnStatus();
+      this.renderSettingsControls();
       this.renderEvents();
     }
   }
@@ -491,6 +499,11 @@ export class AppRenderer {
       turnContextMissing ||
       !hasInterruptibleTurn ||
       state.stream.turnPhase === "interrupting";
+
+    const disableSettings = !state.session.authenticated || state.session.busy;
+    this.dom.settingsShowStatusEventsInput.disabled = disableSettings;
+    this.dom.settingsShowInternalEventsInput.disabled = disableSettings;
+    this.dom.settingsCompactStatusBurstsInput.disabled = disableSettings;
   }
 
   private renderWorkspaceList(): void {
@@ -719,6 +732,36 @@ export class AppRenderer {
     this.dom.turnStatusText.textContent = presentation.description;
 
     this.syncTurnStatusTimer(state.stream.turnPhase);
+    this.renderBackgroundTerminalStatus();
+  }
+
+  private renderBackgroundTerminalStatus(): void {
+    const state = this.readState();
+    const count = state.stream.backgroundTerminalActiveCount;
+    const waiting = state.stream.backgroundTerminalWaiting;
+
+    if (count <= 0) {
+      setHidden(this.dom.backgroundTerminalRow, true);
+      this.dom.backgroundTerminalText.textContent = "Idle";
+      return;
+    }
+
+    setHidden(this.dom.backgroundTerminalRow, false);
+
+    const processLabel = count === 1 ? "1 process" : `${count} processes`;
+    const waitLabel = waiting ? "waiting for output" : "running";
+    const commandLabel = state.stream.backgroundTerminalLatestCommand
+      ? ` · ${truncateInlineText(state.stream.backgroundTerminalLatestCommand, 120)}`
+      : "";
+    this.dom.backgroundTerminalText.textContent = `${processLabel} ${waitLabel}${commandLabel}`;
+  }
+
+  private renderSettingsControls(): void {
+    const state = this.readState();
+
+    this.dom.settingsShowStatusEventsInput.checked = state.stream.showStatusEvents;
+    this.dom.settingsShowInternalEventsInput.checked = state.stream.showInternalEvents;
+    this.dom.settingsCompactStatusBurstsInput.checked = state.stream.compactStatusBursts;
   }
 
   private selectedThreadTranscript(state: Readonly<AppState>): ThreadTranscriptState | null {
@@ -918,10 +961,21 @@ export class AppRenderer {
     const transcript = this.selectedThreadTranscript(state);
     const placeholderMessage = this.transcriptLoadingMessage(transcript);
 
+    if (
+      this.lastRenderedTranscriptThreadId === selectedThreadId &&
+      this.lastRenderedTranscriptRef === transcript &&
+      this.lastRenderedTranscriptPlaceholder === placeholderMessage
+    ) {
+      return;
+    }
+
     if (placeholderMessage) {
       this.dom.transcriptList.replaceChildren(renderEmptyMessage(placeholderMessage));
       this.followTranscript = true;
       this.updateTranscriptJumpVisibility(0);
+      this.lastRenderedTranscriptThreadId = selectedThreadId;
+      this.lastRenderedTranscriptRef = transcript;
+      this.lastRenderedTranscriptPlaceholder = placeholderMessage;
       return;
     }
 
@@ -929,6 +983,9 @@ export class AppRenderer {
       this.dom.transcriptList.replaceChildren(renderEmptyMessage("Select a thread to load history."));
       this.followTranscript = true;
       this.updateTranscriptJumpVisibility(0);
+      this.lastRenderedTranscriptThreadId = selectedThreadId;
+      this.lastRenderedTranscriptRef = transcript;
+      this.lastRenderedTranscriptPlaceholder = "Select a thread to load history.";
       return;
     }
 
@@ -936,6 +993,9 @@ export class AppRenderer {
       this.dom.transcriptList.replaceChildren(renderEmptyMessage("Select a thread to load history."));
       this.followTranscript = true;
       this.updateTranscriptJumpVisibility(0);
+      this.lastRenderedTranscriptThreadId = selectedThreadId;
+      this.lastRenderedTranscriptRef = transcript;
+      this.lastRenderedTranscriptPlaceholder = "Select a thread to load history.";
       return;
     }
 
@@ -950,6 +1010,9 @@ export class AppRenderer {
     }
 
     this.updateTranscriptJumpVisibility(transcript.items.length);
+    this.lastRenderedTranscriptThreadId = selectedThreadId;
+    this.lastRenderedTranscriptRef = transcript;
+    this.lastRenderedTranscriptPlaceholder = "";
   }
 
   private isNearTranscriptBottom(): boolean {
@@ -995,6 +1058,16 @@ export class AppRenderer {
 
   private renderEvents(): void {
     const state = this.readState();
+    const shouldSkipRender =
+      this.lastRenderedEventsRef === state.stream.events &&
+      this.lastRenderedShowInternalEvents === state.stream.showInternalEvents &&
+      this.lastRenderedShowStatusEvents === state.stream.showStatusEvents &&
+      this.lastRenderedCompactStatusBursts === state.stream.compactStatusBursts;
+
+    if (shouldSkipRender) {
+      return;
+    }
+
     const { visibleEvents, hiddenInternalCount, hiddenStatusCount } = this.buildEventViews();
 
     this.renderEventToolbar(
@@ -1016,6 +1089,10 @@ export class AppRenderer {
       this.dom.eventList.replaceChildren(placeholder);
       this.followTimeline = true;
       this.updateJumpLatestVisibility(false);
+      this.lastRenderedEventsRef = state.stream.events;
+      this.lastRenderedShowInternalEvents = state.stream.showInternalEvents;
+      this.lastRenderedShowStatusEvents = state.stream.showStatusEvents;
+      this.lastRenderedCompactStatusBursts = state.stream.compactStatusBursts;
       return;
     }
 
@@ -1031,6 +1108,10 @@ export class AppRenderer {
     }
 
     this.updateJumpLatestVisibility(visibleEvents.length > 0);
+    this.lastRenderedEventsRef = state.stream.events;
+    this.lastRenderedShowInternalEvents = state.stream.showInternalEvents;
+    this.lastRenderedShowStatusEvents = state.stream.showStatusEvents;
+    this.lastRenderedCompactStatusBursts = state.stream.compactStatusBursts;
   }
 
   private renderEventToolbar(
@@ -1076,7 +1157,7 @@ export class AppRenderer {
       ? internalFilteredEvents
       : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
 
-    return this.compactStatusBursts(statusFilteredEvents);
+    return streamState.compactStatusBursts ? this.compactStatusBursts(statusFilteredEvents) : statusFilteredEvents;
   }
 
   private buildEventViews(): {
@@ -1094,7 +1175,7 @@ export class AppRenderer {
       : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
 
     return {
-      visibleEvents: this.compactStatusBursts(statusFilteredEvents),
+      visibleEvents: streamState.compactStatusBursts ? this.compactStatusBursts(statusFilteredEvents) : statusFilteredEvents,
       hiddenInternalCount: allEvents.length - internalFilteredEvents.length,
       hiddenStatusCount: internalFilteredEvents.length - statusFilteredEvents.length
     };

@@ -29,8 +29,12 @@ function createInitialState(): AppState {
       events: [],
       showInternalEvents: false,
       showStatusEvents: false,
+      compactStatusBursts: true,
       turnPhase: "idle",
-      turnStartedAtMs: null
+      turnStartedAtMs: null,
+      backgroundTerminalActiveCount: 0,
+      backgroundTerminalLatestCommand: null,
+      backgroundTerminalWaiting: false
     }
   };
 }

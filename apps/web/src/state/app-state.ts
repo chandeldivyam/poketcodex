@@ -85,8 +85,12 @@ export interface StreamState {
   events: TimelineEventEntry[];
   showInternalEvents: boolean;
   showStatusEvents: boolean;
+  compactStatusBursts: boolean;
   turnPhase: TurnExecutionPhase;
   turnStartedAtMs: number | null;
+  backgroundTerminalActiveCount: number;
+  backgroundTerminalLatestCommand: string | null;
+  backgroundTerminalWaiting: boolean;
 }
 
 export interface AppState {
