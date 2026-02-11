@@ -7,6 +7,13 @@ ENV_FILE="${POCKETCODEX_ENV_FILE:-${ROOT_DIR}/.env}"
 
 mkdir -p "${RUNTIME_DIR}"
 
+# macOS does not ship setsid; fall back to a no-op wrapper.
+if command -v setsid >/dev/null 2>&1; then
+  __setsid() { setsid "$@"; }
+else
+  __setsid() { exec "$@"; }
+fi
+
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "[poketcodex] Missing env file: ${ENV_FILE}" >&2
   echo "[poketcodex] Copy .env.example to .env and fill required secrets." >&2
@@ -87,7 +94,7 @@ start_service() {
 
   (
     cd "${ROOT_DIR}/${workdir}"
-    setsid env POCKETCODEX_ENV_FILE="${ENV_FILE}" bash "${ROOT_DIR}/scripts/run-with-env.sh" "${command[@]}" >"${log_file}" 2>&1 < /dev/null &
+    __setsid env POCKETCODEX_ENV_FILE="${ENV_FILE}" bash "${ROOT_DIR}/scripts/run-with-env.sh" "${command[@]}" >"${log_file}" 2>&1 < /dev/null &
     echo "$!" >"${pid_file}"
   )
 
