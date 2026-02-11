@@ -29,7 +29,7 @@ describe("ThreadService", () => {
     expect(threadStart).toHaveBeenCalledWith({
       model: "gpt-5.1-codex",
       approvalPolicy: "never",
-      sandbox: "dangerFullAccess"
+      sandbox: "danger-full-access"
     });
   });
 });

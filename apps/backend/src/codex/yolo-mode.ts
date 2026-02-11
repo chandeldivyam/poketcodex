@@ -1,4 +1,5 @@
 export const YOLO_APPROVAL_POLICY = "never";
+export const YOLO_SANDBOX_MODE = "danger-full-access";
 
 export interface DangerFullAccessSandboxPolicy {
   type: "dangerFullAccess";
@@ -12,7 +13,7 @@ export function withYoloThreadConfig(params: Record<string, unknown>): Record<st
   return {
     ...params,
     approvalPolicy: YOLO_APPROVAL_POLICY,
-    sandbox: YOLO_SANDBOX_POLICY.type
+    sandbox: YOLO_SANDBOX_MODE
   };
 }
 
