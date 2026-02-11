@@ -690,9 +690,11 @@ export class AppRenderer {
   private renderContextLabels(): void {
     const state = this.readState();
     const activeWorkspace = selectActiveWorkspace(state);
+    const selectedThreadLabel = selectSelectedThreadLabel(state);
 
     this.dom.selectedWorkspaceLabel.textContent = activeWorkspace?.displayName ?? "None";
-    this.dom.selectedThreadLabel.textContent = selectSelectedThreadLabel(state);
+    this.dom.selectedThreadLabel.textContent = selectedThreadLabel;
+    this.dom.conversationTitle.textContent = selectedThreadLabel === "None" ? "Conversation" : selectedThreadLabel;
   }
 
   private renderDraftPrompt(): void {

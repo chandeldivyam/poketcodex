@@ -19,6 +19,7 @@ export interface AppDomRefs {
   refreshThreadsButton: HTMLButtonElement;
   startThreadButton: HTMLButtonElement;
   threadList: HTMLElement;
+  conversationTitle: HTMLElement;
   selectedWorkspaceLabel: HTMLElement;
   selectedThreadLabel: HTMLElement;
   turnForm: HTMLFormElement;
@@ -85,25 +86,28 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
         <aside class="nav-column">
           <section class="panel workspace-panel">
             <h2>Workspaces</h2>
-            <form id="workspace-form">
-              <label>
-                Absolute Path
-                <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required data-role="workspace-path" />
-              </label>
-              <label>
-                Display Name
-                <input type="text" name="displayName" placeholder="My Repo" data-role="workspace-display-name" />
-              </label>
-              <button type="submit" data-role="workspace-submit">Add Workspace</button>
-            </form>
+            <details class="workspace-disclosure">
+              <summary>Add workspace</summary>
+              <form id="workspace-form">
+                <label>
+                  Absolute Path
+                  <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required data-role="workspace-path" />
+                </label>
+                <label>
+                  Display Name
+                  <input type="text" name="displayName" placeholder="My Repo" data-role="workspace-display-name" />
+                </label>
+                <button type="submit" data-role="workspace-submit">Add Workspace</button>
+              </form>
+            </details>
             <div class="list-container" data-role="workspace-list"></div>
           </section>
 
           <section class="panel thread-panel">
             <h2>Threads</h2>
             <div class="thread-actions">
+              <button type="button" data-role="start-thread">New Thread</button>
               <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
-              <button type="button" data-role="start-thread">Start Thread</button>
             </div>
             <div class="list-container" data-role="thread-list"></div>
           </section>
@@ -111,28 +115,12 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
         <section class="panel conversation-panel event-panel">
           <div class="conversation-header">
-            <h2>Turn Console</h2>
+            <h2 data-role="conversation-title">Conversation</h2>
             <div class="conversation-context">
               <span class="context-chip">Workspace: <strong data-role="selected-workspace">None</strong></span>
               <span class="context-chip">Thread: <strong data-role="selected-thread">None</strong></span>
             </div>
           </div>
-
-          <form id="turn-form">
-            <label>
-              Prompt
-              <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required data-role="turn-prompt"></textarea>
-            </label>
-            <div class="turn-status" data-role="turn-status">
-              <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
-              <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
-            </div>
-            <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
-            <div class="turn-actions">
-              <button type="submit" data-role="start-turn">Start Turn</button>
-              <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
-            </div>
-          </form>
 
           <div class="transcript-toolbar">
             <span class="event-toolbar-label">Conversation</span>
@@ -149,20 +137,39 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             </ol>
           </div>
 
-          <div class="event-toolbar">
-            <span class="event-toolbar-label">Live runtime events</span>
-            <div class="event-toolbar-actions">
-              <button class="button-secondary" type="button" data-role="toggle-status-events">Show Status</button>
-              <button class="button-secondary" type="button" data-role="toggle-internal-events">Show Internal</button>
-              <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+          <form id="turn-form" class="composer-form">
+            <label>
+              Prompt
+              <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required data-role="turn-prompt"></textarea>
+            </label>
+            <div class="turn-status" data-role="turn-status">
+              <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
+              <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
             </div>
-          </div>
+            <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
+            <div class="turn-actions">
+              <button type="submit" data-role="start-turn">Send</button>
+              <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
+            </div>
+          </form>
 
-          <div class="event-stream" data-role="event-stream">
-            <ol data-role="event-list">
-              <li>Awaiting events...</li>
-            </ol>
-          </div>
+          <details class="events-disclosure">
+            <summary>Live runtime events</summary>
+            <div class="event-toolbar">
+              <span class="event-toolbar-label">Runtime stream controls</span>
+              <div class="event-toolbar-actions">
+                <button class="button-secondary" type="button" data-role="toggle-status-events">Show Status</button>
+                <button class="button-secondary" type="button" data-role="toggle-internal-events">Show Internal</button>
+                <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+              </div>
+            </div>
+
+            <div class="event-stream" data-role="event-stream">
+              <ol data-role="event-list">
+                <li>Awaiting events...</li>
+              </ol>
+            </div>
+          </details>
         </section>
       </section>
     </main>
@@ -189,6 +196,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     refreshThreadsButton: requireElement<HTMLButtonElement>(root, "[data-role='refresh-threads']"),
     startThreadButton: requireElement<HTMLButtonElement>(root, "[data-role='start-thread']"),
     threadList: requireElement<HTMLElement>(root, "[data-role='thread-list']"),
+    conversationTitle: requireElement<HTMLElement>(root, "[data-role='conversation-title']"),
     selectedWorkspaceLabel: requireElement<HTMLElement>(root, "[data-role='selected-workspace']"),
     selectedThreadLabel: requireElement<HTMLElement>(root, "[data-role='selected-thread']"),
     turnForm: requireElement<HTMLFormElement>(root, "#turn-form"),

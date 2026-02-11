@@ -185,9 +185,10 @@ body {
 }
 
 .conversation-panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  align-content: start;
+  min-height: min(78dvh, 880px);
 }
 
 .conversation-header {
@@ -291,6 +292,15 @@ button.button-danger {
 form {
   display: grid;
   gap: var(--space-3);
+}
+
+.composer-form {
+  border: 1px solid #ccddd7;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.94);
+  padding: var(--space-3);
+  gap: var(--space-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .list-container {
@@ -442,6 +452,30 @@ form {
   flex-wrap: wrap;
 }
 
+.workspace-disclosure {
+  margin-bottom: var(--space-3);
+}
+
+.workspace-disclosure > summary {
+  cursor: pointer;
+  color: #45615a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.workspace-disclosure[open] {
+  border: 1px dashed #c1d4cd;
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: rgba(248, 252, 249, 0.7);
+}
+
+.workspace-disclosure[open] > form {
+  margin-top: 0.6rem;
+}
+
 .thread-actions button,
 .status-row button {
   flex: 1 1 120px;
@@ -549,8 +583,8 @@ form {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: rgba(248, 252, 249, 0.95);
-  min-height: 220px;
-  max-height: min(50dvh, 560px);
+  flex: 1 1 auto;
+  min-height: 260px;
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0.65rem;
@@ -685,6 +719,21 @@ form {
   text-transform: uppercase;
   color: #35554d;
   background: #ecf4f1;
+}
+
+.events-disclosure {
+  border-top: 1px dashed #c6d6d0;
+  padding-top: 0.4rem;
+}
+
+.events-disclosure > summary {
+  cursor: pointer;
+  color: #48625c;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
 }
 
 .event-stream {
@@ -984,6 +1033,10 @@ form {
     padding: var(--space-3);
   }
 
+  .conversation-panel {
+    min-height: min(74dvh, 760px);
+  }
+
   .status-row button,
   .thread-actions button,
   .event-toolbar-actions button {
@@ -999,7 +1052,7 @@ form {
   }
 
   .transcript-stream {
-    max-height: min(44dvh, 440px);
+    min-height: 200px;
   }
 }
 
