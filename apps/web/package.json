@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev": "vite --host ${WEB_DEV_HOST:-127.0.0.1} --port ${WEB_DEV_PORT:-5173}",
+    "start": "vite preview --host ${WEB_PREVIEW_HOST:-127.0.0.1} --port ${WEB_PREVIEW_PORT:-4173}",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",

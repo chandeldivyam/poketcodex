@@ -19,6 +19,10 @@ PocketCodex backend reads configuration from environment variables and validates
 - `AUTH_MODE`: Currently supports `single_user`.
 - `COOKIE_SECURE`: Boolean-like value (`true/false/1/0`) for cookie secure flag.
 - `SESSION_TTL_MINUTES`: Session TTL in minutes (default `1440`).
+- `WEB_DEV_HOST`: Frontend dev host for `pnpm dev` (default `127.0.0.1`).
+- `WEB_DEV_PORT`: Frontend dev port for `pnpm dev` (default `5173`).
+- `WEB_PREVIEW_HOST`: Frontend preview host for long-running mode (default `127.0.0.1`).
+- `WEB_PREVIEW_PORT`: Frontend preview port for long-running mode (default `4173`).
 
 ## Behavior
 
