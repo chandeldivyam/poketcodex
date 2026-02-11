@@ -23,6 +23,7 @@ PocketCodex backend reads configuration from environment variables and validates
 - `WEB_DEV_PORT`: Frontend dev port for `pnpm dev` (default `5173`).
 - `WEB_PREVIEW_HOST`: Frontend preview host for long-running mode (default `127.0.0.1`).
 - `WEB_PREVIEW_PORT`: Frontend preview port for long-running mode (default `4173`).
+- `WEB_ALLOWED_HOSTS`: Comma-separated Vite allowed hosts for dev/preview (default includes `localhost`, `127.0.0.1`, and `.ts.net`).
 
 ## Behavior
 

@@ -42,6 +42,7 @@ The backend validates configuration at startup and exits on invalid values.
 5. Optional frontend bind settings:
    - `WEB_DEV_HOST`, `WEB_DEV_PORT` for `pnpm dev`
    - `WEB_PREVIEW_HOST`, `WEB_PREVIEW_PORT` for long-running preview mode
+   - `WEB_ALLOWED_HOSTS` for Vite host allowlist (include your Tailscale hostname if needed)
 
 ## Running
 
