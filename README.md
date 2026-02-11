@@ -75,3 +75,11 @@ pnpm longrun:status
 pnpm longrun:logs
 pnpm longrun:down
 ```
+
+## Runtime Policy
+
+The backend currently enforces YOLO-style Codex runtime defaults on all thread/turn starts:
+
+- `approvalPolicy: "never"`
+- `sandbox: "dangerFullAccess"` (thread-level default)
+- `sandboxPolicy: { "type": "dangerFullAccess" }` (turn-level override)

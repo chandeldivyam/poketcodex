@@ -29,3 +29,4 @@ PocketCodex backend reads configuration from environment variables and validates
 
 - Backend startup fails fast on invalid or missing required values.
 - Startup logs include a redacted config payload so secrets are never printed in plaintext.
+- Turn and thread start requests enforce YOLO-style runtime policy (`approvalPolicy=never`, danger-full-access sandbox).

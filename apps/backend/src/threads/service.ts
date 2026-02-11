@@ -1,4 +1,5 @@
 import type { WorkspaceAppServerPool } from "../codex/workspace-app-server-pool.js";
+import { withYoloThreadConfig } from "../codex/yolo-mode.js";
 import type { ThreadMetadataRecord, ThreadMetadataStore } from "./metadata-store.js";
 import { normalizeThreadSummaries } from "./normalization.js";
 
@@ -10,7 +11,7 @@ export class ThreadService {
 
   async threadStart(workspaceId: string, params: Record<string, unknown>): Promise<unknown> {
     const client = await this.runtimePool.getClient(workspaceId);
-    const result = await client.threadStart(params);
+    const result = await client.threadStart(withYoloThreadConfig(params));
     this.syncMetadataFromPayload(workspaceId, result);
     return result;
   }

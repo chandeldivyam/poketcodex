@@ -26,6 +26,32 @@ function createService(client: MockClient): {
 }
 
 describe("TurnService", () => {
+  it("enforces yolo overrides for turn start requests", async () => {
+    const params = {
+      threadId: "thread-123",
+      input: [{ type: "text", text: "hello" }],
+      approvalPolicy: "on-request"
+    };
+
+    const client: MockClient = {
+      turnStart: vi.fn().mockResolvedValue({ turn: { id: "1", status: "inProgress" } }),
+      threadResume: vi.fn(),
+      turnSteer: vi.fn(),
+      turnInterrupt: vi.fn()
+    };
+
+    const { service } = createService(client);
+    await service.turnStart("workspace-1", params);
+
+    expect(client.turnStart).toHaveBeenCalledWith({
+      ...params,
+      approvalPolicy: "never",
+      sandboxPolicy: {
+        type: "dangerFullAccess"
+      }
+    });
+  });
+
   it("retries turn start after thread resume when runtime reports thread not found", async () => {
     const params = {
       threadId: "thread-123",
@@ -50,6 +76,20 @@ describe("TurnService", () => {
     expect(client.threadResume).toHaveBeenCalledTimes(1);
     expect(client.threadResume).toHaveBeenCalledWith({
       threadId: "thread-123"
+    });
+    expect(client.turnStart).toHaveBeenNthCalledWith(1, {
+      ...params,
+      approvalPolicy: "never",
+      sandboxPolicy: {
+        type: "dangerFullAccess"
+      }
+    });
+    expect(client.turnStart).toHaveBeenNthCalledWith(2, {
+      ...params,
+      approvalPolicy: "never",
+      sandboxPolicy: {
+        type: "dangerFullAccess"
+      }
     });
     expect(result).toEqual({
       turn: { id: "2", status: "inProgress" }

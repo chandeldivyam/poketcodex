@@ -1,22 +1,24 @@
 import { AppServerRpcError } from "../codex/app-server-manager.js";
 import type { WorkspaceAppServerPool } from "../codex/workspace-app-server-pool.js";
+import { withYoloTurnConfig } from "../codex/yolo-mode.js";
 
 export class TurnService {
   constructor(private readonly runtimePool: WorkspaceAppServerPool) {}
 
   async turnStart(workspaceId: string, params: Record<string, unknown>): Promise<unknown> {
     const client = await this.runtimePool.getClient(workspaceId);
-    const threadId = getThreadId(params);
+    const requestParams = withYoloTurnConfig(params);
+    const threadId = getThreadId(requestParams);
 
     try {
-      return await client.turnStart(params);
+      return await client.turnStart(requestParams);
     } catch (error: unknown) {
       if (!threadId || !isThreadNotFoundError(error)) {
         throw error;
       }
 
       await client.threadResume({ threadId });
-      return await client.turnStart(params);
+      return await client.turnStart(requestParams);
     }
   }
 
