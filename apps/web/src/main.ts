@@ -2121,7 +2121,6 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     appendEvent("Turn started", "runtime");
     dom.turnForm.reset();
     dom.composerImageInput.value = "";
-    dom.composerCameraInput.value = "";
 
     updateDraftCacheForContext(getCurrentDraftContextKey(), "", []);
     store.patchSlice("stream", {
@@ -2360,22 +2359,9 @@ function attachHandlers(): void {
     dom.composerImageInput.click();
   });
 
-  dom.composerCameraCaptureButton.addEventListener("click", () => {
-    if (dom.composerCameraInput.disabled) {
-      return;
-    }
-
-    dom.composerCameraInput.click();
-  });
-
   dom.composerImageInput.addEventListener("change", () => {
     void handleDraftImageSelection(dom.composerImageInput.files, "upload");
     dom.composerImageInput.value = "";
-  });
-
-  dom.composerCameraInput.addEventListener("change", () => {
-    void handleDraftImageSelection(dom.composerCameraInput.files, "camera");
-    dom.composerCameraInput.value = "";
   });
 
   dom.composerImageList.addEventListener("click", (event) => {

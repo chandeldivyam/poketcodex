@@ -45,6 +45,9 @@ const TIMELINE_MESSAGE_COLLAPSE_LENGTH = 220;
 const TIMELINE_MESSAGE_COLLAPSE_LINES = 4;
 const TRANSCRIPT_TEXT_COLLAPSE_LENGTH = 420;
 const TRANSCRIPT_TEXT_COLLAPSE_LINES = 9;
+const COMPOSER_TEXTAREA_MIN_HEIGHT_PX = 42;
+const COMPOSER_TEXTAREA_MAX_HEIGHT_RATIO = 0.22;
+const COMPOSER_TEXTAREA_MAX_HEIGHT_PX = 160;
 
 interface TurnStatusPresentation {
   label: string;
@@ -192,6 +195,31 @@ function truncateInlineText(value: string, maxLength = 90): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function looksLikeOpaqueThreadId(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized)) {
+    return true;
+  }
+
+  if (/^thread[-_]/.test(normalized)) {
+    return true;
+  }
+
+  return normalized.length >= 36 && !/\s/.test(normalized);
+}
+
+function formatConversationHeading(selectedThreadLabel: string): string {
+  if (selectedThreadLabel === "None") {
+    return "Conversation";
+  }
+
+  return looksLikeOpaqueThreadId(selectedThreadLabel) ? "Conversation" : truncateInlineText(selectedThreadLabel, 52);
 }
 
 function formatBytes(bytes: number): string {
@@ -386,6 +414,17 @@ export class AppRenderer {
     this.dom = dom;
     this.readState = readState;
 
+    this.dom.turnPromptInput.addEventListener("input", () => {
+      this.resizePromptInput();
+    });
+
+    window.addEventListener("resize", () => {
+      this.resizePromptInput();
+    });
+    window.visualViewport?.addEventListener("resize", () => {
+      this.resizePromptInput();
+    });
+
     this.dom.transcriptStream.addEventListener("scroll", () => {
       this.handleTranscriptScroll();
     });
@@ -405,6 +444,8 @@ export class AppRenderer {
       this.scrollToLatest();
       this.updateJumpLatestVisibility(this.getVisibleEvents().length > 0);
     });
+
+    this.resizePromptInput();
   }
 
   renderAll(): void {
@@ -528,12 +569,14 @@ export class AppRenderer {
       threadActionsDisabled ||
       turnRequestInFlight ||
       state.stream.imageAttachmentBusy;
-    this.dom.composerAttachImageButton.textContent = state.stream.imageAttachmentBusy ? "Processing..." : "Add Image";
-    this.dom.composerCameraCaptureButton.textContent = state.stream.imageAttachmentBusy ? "Processing..." : "Camera";
+    this.dom.composerAttachImageButton.textContent = state.stream.imageAttachmentBusy ? "…" : "+";
+    this.dom.composerAttachImageButton.title = state.stream.imageAttachmentBusy ? "Processing image..." : "Add image";
+    this.dom.composerAttachImageButton.setAttribute(
+      "aria-label",
+      state.stream.imageAttachmentBusy ? "Processing image" : "Add image"
+    );
     this.dom.composerAttachImageButton.disabled = mediaActionsDisabled;
-    this.dom.composerCameraCaptureButton.disabled = mediaActionsDisabled;
     this.dom.composerImageInput.disabled = mediaActionsDisabled;
-    this.dom.composerCameraInput.disabled = mediaActionsDisabled;
   }
 
   private renderWorkspaceList(): void {
@@ -742,15 +785,33 @@ export class AppRenderer {
     const selectedThreadLabel = selectSelectedThreadLabel(state);
 
     this.dom.selectedWorkspaceLabel.textContent = activeWorkspace?.displayName ?? "None";
-    this.dom.selectedThreadLabel.textContent = selectedThreadLabel;
-    this.dom.conversationTitle.textContent = selectedThreadLabel === "None" ? "Conversation" : selectedThreadLabel;
+    this.dom.selectedThreadLabel.textContent =
+      selectedThreadLabel === "None" ? "None" : truncateInlineText(selectedThreadLabel, 52);
+    this.dom.conversationTitle.textContent = formatConversationHeading(selectedThreadLabel);
   }
 
   private renderDraftPrompt(): void {
     const state = this.readState();
     if (this.dom.turnPromptInput.value !== state.stream.draftPrompt) {
       this.dom.turnPromptInput.value = state.stream.draftPrompt;
+      this.resizePromptInput();
     }
+  }
+
+  private resizePromptInput(): void {
+    const textarea = this.dom.turnPromptInput;
+    const visualViewportHeight = window.visualViewport?.height;
+    const viewportHeight =
+      typeof visualViewportHeight === "number" && visualViewportHeight > 0 ? visualViewportHeight : window.innerHeight;
+    const computedMaxHeight = Math.min(
+      COMPOSER_TEXTAREA_MAX_HEIGHT_PX,
+      Math.max(COMPOSER_TEXTAREA_MIN_HEIGHT_PX, Math.floor(viewportHeight * COMPOSER_TEXTAREA_MAX_HEIGHT_RATIO))
+    );
+
+    textarea.style.height = "auto";
+    const nextHeight = Math.max(COMPOSER_TEXTAREA_MIN_HEIGHT_PX, Math.min(textarea.scrollHeight, computedMaxHeight));
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > computedMaxHeight ? "auto" : "hidden";
   }
 
   private createDraftImageChip(image: DraftImageAttachment, disableRemove: boolean): HTMLDivElement {

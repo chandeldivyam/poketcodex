@@ -25,9 +25,7 @@ export interface AppDomRefs {
   turnForm: HTMLFormElement;
   turnPromptInput: HTMLTextAreaElement;
   composerAttachImageButton: HTMLButtonElement;
-  composerCameraCaptureButton: HTMLButtonElement;
   composerImageInput: HTMLInputElement;
-  composerCameraInput: HTMLInputElement;
   composerImageList: HTMLElement;
   turnStatusChip: HTMLElement;
   turnStatusText: HTMLElement;
@@ -61,20 +59,24 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
   root.innerHTML = `
     <main class="app-shell">
       <header class="app-header">
-        <div class="header-copy">
-          <p class="eyebrow">Workspace Runtime Console</p>
-          <h1>PocketCodex</h1>
-          <p class="subhead">Mobile Codex control plane</p>
+        <div class="header-main">
+          <div class="header-copy">
+            <p class="eyebrow">Workspace Runtime Console</p>
+            <h1>PocketCodex</h1>
+            <p class="subhead">Mobile Codex control plane</p>
+          </div>
+          <div class="header-actions">
+            <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
+            <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="3" y1="5" x2="17" y2="5"/>
+                <line x1="3" y1="10" x2="17" y2="10"/>
+                <line x1="3" y1="15" x2="17" y2="15"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="3" y1="5" x2="17" y2="5"/>
-            <line x1="3" y1="10" x2="17" y2="10"/>
-            <line x1="3" y1="15" x2="17" y2="15"/>
-          </svg>
-        </button>
-        <div class="status-row">
-          <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
+        <div class="status-row" aria-label="Workspace controls">
           <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh</button>
           <button class="button-secondary" type="button" data-role="reconnect-events">Reconnect</button>
           <button class="button-secondary" type="button" data-role="logout">Logout</button>
@@ -103,7 +105,39 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
       <section class="app-body is-hidden" data-role="app-panels">
         <aside class="nav-column">
-          <section class="panel workspace-panel">
+          <div class="nav-mobile-tabs" role="tablist" aria-label="Sidebar sections">
+            <button
+              type="button"
+              class="nav-mobile-tab is-active"
+              role="tab"
+              aria-selected="true"
+              data-nav-tab="workspaces"
+            >
+              Workspaces
+            </button>
+            <button
+              type="button"
+              class="nav-mobile-tab"
+              role="tab"
+              aria-selected="false"
+              data-nav-tab="threads"
+              tabindex="-1"
+            >
+              Threads
+            </button>
+            <button
+              type="button"
+              class="nav-mobile-tab"
+              role="tab"
+              aria-selected="false"
+              data-nav-tab="settings"
+              tabindex="-1"
+            >
+              Settings
+            </button>
+          </div>
+
+          <section class="panel workspace-panel nav-panel is-active" data-nav-panel="workspaces">
             <h2>Workspaces</h2>
             <details class="workspace-disclosure">
               <summary>Add workspace</summary>
@@ -122,7 +156,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             <div class="list-container" data-role="workspace-list"></div>
           </section>
 
-          <section class="panel thread-panel">
+          <section class="panel thread-panel nav-panel" data-nav-panel="threads">
             <h2>Threads</h2>
             <div class="thread-actions">
               <button type="button" data-role="start-thread">New Thread</button>
@@ -131,7 +165,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             <div class="list-container" data-role="thread-list"></div>
           </section>
 
-          <section class="panel settings-panel">
+          <section class="panel settings-panel nav-panel" data-nav-panel="settings">
             <h2>Settings</h2>
             <div class="settings-note">Runtime mode: YOLO (approvals off)</div>
             <div class="settings-form">
@@ -177,11 +211,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           </div>
 
           <form id="turn-form" class="composer-form">
-            <label>
-              Prompt
-              <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." data-role="turn-prompt"></textarea>
-            </label>
-            <div class="composer-media-actions">
+            <div class="composer-inline-row">
               <input
                 class="is-hidden"
                 type="file"
@@ -189,29 +219,57 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
                 multiple
                 data-role="composer-image-input"
               />
-              <input
-                class="is-hidden"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                data-role="composer-camera-input"
-              />
-              <button class="button-secondary" type="button" data-role="composer-attach-image">Add Image</button>
-              <button class="button-secondary" type="button" data-role="composer-camera-capture">Camera</button>
+              <button
+                class="button-secondary composer-attach-icon"
+                type="button"
+                data-role="composer-attach-image"
+                aria-label="Add image"
+                title="Add image"
+              >
+                +
+              </button>
+              <label class="composer-inline-prompt">
+                Prompt
+                <textarea
+                  id="turn-prompt"
+                  name="prompt"
+                  rows="1"
+                  placeholder="Ask Codex..."
+                  aria-label="Prompt"
+                  data-role="turn-prompt"
+                ></textarea>
+              </label>
+              <button class="composer-send-fab" type="submit" data-role="start-turn" aria-label="Send">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+              <button class="button-secondary composer-interrupt-mini" type="button" data-role="interrupt-turn">
+                Stop
+              </button>
             </div>
             <div class="composer-image-list is-hidden" data-role="composer-image-list"></div>
-            <div class="turn-status" data-role="turn-status">
-              <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
-              <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
+            <div class="composer-meta-row">
+              <div class="turn-status" data-role="turn-status">
+                <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
+                <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
+              </div>
+              <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
             </div>
             <div class="background-terminal is-hidden" data-role="background-terminal-row">
               <span class="background-terminal-chip">Background Terminal</span>
               <span class="background-terminal-text" data-role="background-terminal-text">Idle</span>
-            </div>
-            <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
-            <div class="turn-actions">
-              <button type="submit" data-role="start-turn">Send</button>
-              <button class="button-danger" type="button" data-role="interrupt-turn">Interrupt</button>
             </div>
           </form>
 
@@ -242,23 +300,84 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
   const sidebarToggle = requireElement<HTMLButtonElement>(root, "[data-role='sidebar-toggle']");
   const sidebarOverlay = requireElement<HTMLElement>(root, "[data-role='sidebar-overlay']");
   const navColumn = requireElement<HTMLElement>(root, ".nav-column");
+  const navTabs = [...root.querySelectorAll<HTMLButtonElement>("[data-nav-tab]")];
+  const navPanels = [...root.querySelectorAll<HTMLElement>("[data-nav-panel]")];
 
-  const closeSidebar = () => {
-    navColumn.classList.remove("is-open");
-    sidebarOverlay.classList.remove("is-open");
+  const isDrawerViewport = (): boolean => window.matchMedia("(max-width: 899px)").matches;
+
+  const setActiveNavPanel = (panelId: string): void => {
+    for (const tab of navTabs) {
+      const isActive = tab.dataset.navTab === panelId;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      tab.tabIndex = isActive ? 0 : -1;
+    }
+
+    for (const panel of navPanels) {
+      panel.classList.toggle("is-active", panel.dataset.navPanel === panelId);
+    }
   };
 
+  const setSidebarOpen = (open: boolean): void => {
+    navColumn.classList.toggle("is-open", open);
+    sidebarOverlay.classList.toggle("is-open", open);
+    root.classList.toggle("has-open-sidebar", open);
+  };
+
+  const closeSidebar = () => {
+    setSidebarOpen(false);
+  };
+
+  setActiveNavPanel("workspaces");
+
+  for (const tab of navTabs) {
+    tab.addEventListener("click", () => {
+      const panelId = tab.dataset.navTab;
+      if (!panelId) {
+        return;
+      }
+
+      setActiveNavPanel(panelId);
+    });
+  }
+
   sidebarToggle.addEventListener("click", () => {
-    const isOpen = navColumn.classList.toggle("is-open");
-    sidebarOverlay.classList.toggle("is-open", isOpen);
+    const isOpen = !navColumn.classList.contains("is-open");
+    setSidebarOpen(isOpen);
   });
 
   sidebarOverlay.addEventListener("click", closeSidebar);
 
-  // Auto-close drawer when a workspace or thread is selected on mobile
+  root.ownerDocument.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && navColumn.classList.contains("is-open")) {
+      closeSidebar();
+    }
+  });
+
+  const drawerMediaQuery = window.matchMedia("(max-width: 899px)");
+  const handleDrawerMediaChange = (): void => {
+    if (!drawerMediaQuery.matches) {
+      closeSidebar();
+    }
+  };
+
+  if (typeof drawerMediaQuery.addEventListener === "function") {
+    drawerMediaQuery.addEventListener("change", handleDrawerMediaChange);
+  } else if (typeof drawerMediaQuery.addListener === "function") {
+    drawerMediaQuery.addListener(handleDrawerMediaChange);
+  }
+
+  // Keep thread selection fast on mobile: workspace taps switch sidebar focus to threads.
   navColumn.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
-    if (target.closest(".workspace-item") || target.closest(".thread-item")) {
+    if (target.closest(".workspace-item")) {
+      if (isDrawerViewport()) {
+        setActiveNavPanel("threads");
+      }
+      return;
+    }
+
+    if (target.closest(".thread-item")) {
       closeSidebar();
     }
   });
@@ -290,9 +409,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     turnForm: requireElement<HTMLFormElement>(root, "#turn-form"),
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
     composerAttachImageButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-attach-image']"),
-    composerCameraCaptureButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-camera-capture']"),
     composerImageInput: requireElement<HTMLInputElement>(root, "[data-role='composer-image-input']"),
-    composerCameraInput: requireElement<HTMLInputElement>(root, "[data-role='composer-camera-input']"),
     composerImageList: requireElement<HTMLElement>(root, "[data-role='composer-image-list']"),
     turnStatusChip: requireElement<HTMLElement>(root, "[data-role='turn-status-chip']"),
     turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
