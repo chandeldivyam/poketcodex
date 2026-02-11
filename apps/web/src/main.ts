@@ -763,6 +763,10 @@ function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unk
   }
 
   const isTranscriptMethod = notification.method.startsWith("turn/") || notification.method.startsWith("item/");
+  if (!isTranscriptMethod) {
+    return;
+  }
+
   const threadId =
     extractThreadIdFromRuntimeParams(notification.params) ??
     (isTranscriptMethod ? store.getState().thread.selectedThreadId : null);
