@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import type { AppServerManagerFactory } from "./codex/workspace-app-server-pool.js";
 import { WorkspaceAppServerPool } from "./codex/workspace-app-server-pool.js";
 import { loadConfig, redactConfig, type AppConfig } from "./config.js";
+import { GitService } from "./git/service.js";
 import { ThreadMetadataStore } from "./threads/metadata-store.js";
 import { ThreadService } from "./threads/service.js";
 import { TurnService } from "./turns/service.js";
@@ -28,6 +29,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     workspaceStore,
     ...(options.appServerManagerFactory ? { managerFactory: options.appServerManagerFactory } : {})
   });
+  const gitService = new GitService(workspaceService);
   const threadMetadataStore = new ThreadMetadataStore(config.sqliteDatabasePath);
   const threadService = new ThreadService(workspaceRuntimePool, threadMetadataStore);
   const turnService = new TurnService(workspaceRuntimePool);
@@ -38,7 +40,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     workspaceService,
     threadService,
     turnService,
-    runtimePool: workspaceRuntimePool
+    runtimePool: workspaceRuntimePool,
+    gitService
   });
 
   let address: string;

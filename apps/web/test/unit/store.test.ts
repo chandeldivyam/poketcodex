@@ -37,6 +37,22 @@ function createInitialState(): AppState {
       backgroundTerminalActiveCount: 0,
       backgroundTerminalLatestCommand: null,
       backgroundTerminalWaiting: false
+    },
+    gitReview: {
+      active: false,
+      loading: false,
+      filesCollapsed: false,
+      supported: null,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      clean: true,
+      entries: [],
+      selectedPath: null,
+      diff: "",
+      diffLoading: false,
+      error: null,
+      workspaceId: null
     }
   };
 }

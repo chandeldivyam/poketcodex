@@ -24,6 +24,7 @@ import type {
   AppState,
   AppStateKey,
   DraftImageAttachment,
+  GitStatusEntry,
   ThreadTranscriptHydration,
   ThreadTranscriptState,
   TimelineEventCategory,
@@ -525,6 +526,22 @@ const initialState: AppState = {
     backgroundTerminalActiveCount: 0,
     backgroundTerminalLatestCommand: null,
     backgroundTerminalWaiting: false
+  },
+  gitReview: {
+    active: false,
+    loading: false,
+    filesCollapsed: false,
+    supported: null,
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    clean: true,
+    entries: [],
+    selectedPath: null,
+    diff: "",
+    diffLoading: false,
+    error: null,
+    workspaceId: null
   }
 };
 
@@ -538,6 +555,7 @@ let workspaceSocketWorkspaceId: string | null = null;
 let renderScheduled = false;
 let eventSequence = 0;
 let runtimeEventFlushTimer: number | undefined;
+let gitStatusRefreshTimer: number | undefined;
 const pendingRuntimeEvents: Array<{
   workspaceId: string;
   message: string;
@@ -1009,6 +1027,55 @@ function setCompactStatusBursts(compactStatusBursts: boolean): void {
   });
 }
 
+function resetGitReviewState(workspaceId: string | null): void {
+  store.patchSlice("gitReview", {
+    active: false,
+    loading: false,
+    filesCollapsed: false,
+    supported: null,
+    branch: null,
+    ahead: 0,
+    behind: 0,
+    clean: true,
+    entries: [],
+    selectedPath: null,
+    diff: "",
+    diffLoading: false,
+    error: null,
+    workspaceId
+  });
+}
+
+function setGitReviewActive(active: boolean): void {
+  store.patchSlice("gitReview", {
+    active
+  });
+}
+
+function setGitFilesCollapsed(filesCollapsed: boolean): void {
+  store.patchSlice("gitReview", {
+    filesCollapsed
+  });
+}
+
+function mapGitEntries(entries: Array<{
+  path: string;
+  staged: string;
+  unstaged: string;
+  statusLabel: string;
+  originalPath?: string;
+}>): GitStatusEntry[] {
+  return entries.map((entry) => {
+    return {
+      path: entry.path,
+      staged: entry.staged,
+      unstaged: entry.unstaged,
+      statusLabel: entry.statusLabel,
+      ...(entry.originalPath ? { originalPath: entry.originalPath } : {})
+    };
+  });
+}
+
 function setTurnExecutionPhase(
   turnPhase: TurnExecutionPhase,
   options: {
@@ -1070,6 +1137,13 @@ function applyTurnSignal(turnSignal: WorkspaceTurnSignal | undefined): void {
       turnStartedAtMs: nextStartedAtMs
     };
   });
+
+  if (turnSignal === "completed" || turnSignal === "interrupted" || turnSignal === "failed") {
+    const workspaceId = store.getState().workspace.selectedWorkspaceId;
+    if (workspaceId) {
+      scheduleGitStatusRefresh(workspaceId);
+    }
+  }
 }
 
 function activeWorkspace(): WorkspaceRecord | null {
@@ -1696,8 +1770,12 @@ async function loadWorkspaces(): Promise<void> {
   setSelectedWorkspaceId(nextWorkspaceId);
 
   if (nextWorkspaceId) {
+    resetGitReviewState(nextWorkspaceId);
     await loadThreads(nextWorkspaceId);
     connectWorkspaceEvents(nextWorkspaceId);
+    void refreshGitStatus(nextWorkspaceId, {
+      autoSelectFirstFile: false
+    });
     return;
   }
 
@@ -1710,6 +1788,7 @@ async function loadWorkspaces(): Promise<void> {
   });
   setSelectedThreadId(null);
   setTurnExecutionPhase("idle");
+  resetGitReviewState(null);
   disconnectWorkspaceEvents();
 }
 
@@ -1737,6 +1816,159 @@ async function loadThreads(workspaceId: string): Promise<void> {
     appendEvent(`Thread history load failed (${nextThreadId}): ${describeError(error)}`, "error", {
       category: "error"
     });
+  }
+}
+
+async function refreshGitStatus(
+  workspaceId: string,
+  options: {
+    openAfterLoad?: boolean;
+    autoSelectFirstFile?: boolean;
+  } = {}
+): Promise<void> {
+  store.updateSlice("gitReview", (gitReview) => {
+    return {
+      ...gitReview,
+      loading: true,
+      error: null,
+      workspaceId
+    };
+  });
+
+  try {
+    const gitStatus = await apiClient.getWorkspaceGitStatus(workspaceId);
+    if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+      return;
+    }
+
+    const wasCollapsed = store.getState().gitReview.filesCollapsed;
+    const mappedEntries = mapGitEntries(gitStatus.entries);
+    const selectedPathCandidate = store.getState().gitReview.selectedPath;
+    const selectedPath =
+      selectedPathCandidate && mappedEntries.some((entry) => entry.path === selectedPathCandidate)
+        ? selectedPathCandidate
+        : (mappedEntries[0]?.path ?? null);
+
+    store.patchSlice("gitReview", {
+      loading: false,
+      supported: gitStatus.enabled,
+      branch: gitStatus.branch,
+      ahead: gitStatus.ahead,
+      behind: gitStatus.behind,
+      clean: gitStatus.clean,
+      entries: mappedEntries,
+      filesCollapsed: mappedEntries.length === 0 ? false : wasCollapsed,
+      selectedPath,
+      diff: "",
+      diffLoading: false,
+      error: null,
+      workspaceId,
+      ...(options.openAfterLoad && gitStatus.enabled ? { active: true } : {})
+    });
+
+    if (!gitStatus.enabled) {
+      appendEvent(`Git is not enabled in ${describeWorkspaceContext(workspaceId) ?? "the selected workspace"}.`, "system", {
+        category: "status"
+      });
+      return;
+    }
+
+    if (selectedPath && options.autoSelectFirstFile !== false) {
+      await refreshGitDiff(workspaceId, selectedPath);
+    }
+  } catch (error: unknown) {
+    if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+      return;
+    }
+
+    store.patchSlice("gitReview", {
+      loading: false,
+      supported: null,
+      error: `Git status failed: ${describeError(error)}`,
+      entries: [],
+      filesCollapsed: false,
+      selectedPath: null,
+      diff: "",
+      diffLoading: false,
+      workspaceId
+    });
+  }
+}
+
+async function refreshGitDiff(workspaceId: string, relativePath: string): Promise<void> {
+  store.patchSlice("gitReview", {
+    selectedPath: relativePath,
+    diffLoading: true,
+    error: null
+  });
+
+  try {
+    const gitDiff = await apiClient.getWorkspaceGitDiff(workspaceId, relativePath);
+    if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+      return;
+    }
+
+    store.patchSlice("gitReview", {
+      selectedPath: gitDiff.path,
+      diff: gitDiff.diff,
+      diffLoading: false,
+      error: null
+    });
+  } catch (error: unknown) {
+    if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+      return;
+    }
+
+    store.patchSlice("gitReview", {
+      diffLoading: false,
+      diff: "",
+      error: `Git diff failed: ${describeError(error)}`
+    });
+  }
+}
+
+function scheduleGitStatusRefresh(workspaceId: string): void {
+  if (gitStatusRefreshTimer !== undefined) {
+    window.clearTimeout(gitStatusRefreshTimer);
+  }
+
+  gitStatusRefreshTimer = window.setTimeout(() => {
+    gitStatusRefreshTimer = undefined;
+    void refreshGitStatus(workspaceId, {
+      autoSelectFirstFile: store.getState().gitReview.active
+    });
+  }, 500);
+}
+
+async function openGitReview(): Promise<void> {
+  const workspaceId = store.getState().workspace.selectedWorkspaceId;
+  if (!workspaceId) {
+    setError("Select a workspace before opening Git Review.");
+    return;
+  }
+
+  const gitReviewState = store.getState().gitReview;
+  const shouldRefresh =
+    gitReviewState.workspaceId !== workspaceId ||
+    gitReviewState.supported === null ||
+    (gitReviewState.entries.length === 0 && !gitReviewState.clean);
+
+  if (shouldRefresh) {
+    await refreshGitStatus(workspaceId, {
+      openAfterLoad: true,
+      autoSelectFirstFile: true
+    });
+    return;
+  }
+
+  if (gitReviewState.supported === false) {
+    setError("Git is not enabled for this workspace.");
+    return;
+  }
+
+  setGitReviewActive(true);
+  if (gitReviewState.selectedPath && gitReviewState.diff.trim().length === 0) {
+    await refreshGitDiff(workspaceId, gitReviewState.selectedPath);
   }
 }
 
@@ -1783,6 +2015,10 @@ function connectWorkspaceEvents(workspaceId: string, forceReconnect = false): vo
 function disconnectWorkspaceEvents(): void {
   clearRuntimeEventQueue();
   clearBackgroundTerminalState();
+  if (gitStatusRefreshTimer !== undefined) {
+    window.clearTimeout(gitStatusRefreshTimer);
+    gitStatusRefreshTimer = undefined;
+  }
 
   if (workspaceSocket) {
     workspaceSocket.disconnect();
@@ -1809,6 +2045,7 @@ async function initializeSession(): Promise<void> {
     return;
   }
 
+  resetGitReviewState(null);
   disconnectWorkspaceEvents();
 }
 
@@ -1837,6 +2074,7 @@ async function loginWithPassword(password: string): Promise<void> {
     turnPhase: "idle",
     turnStartedAtMs: null
   });
+  resetGitReviewState(null);
   draftCacheByContext.clear();
   clearRuntimeEventQueue();
   clearBackgroundTerminalState();
@@ -1951,6 +2189,22 @@ async function handleLogout(): Promise<void> {
       backgroundTerminalActiveCount: 0,
       backgroundTerminalLatestCommand: null,
       backgroundTerminalWaiting: false
+    },
+    gitReview: {
+      active: false,
+      loading: false,
+      filesCollapsed: false,
+      supported: null,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      clean: true,
+      entries: [],
+      selectedPath: null,
+      diff: "",
+      diffLoading: false,
+      error: null,
+      workspaceId: null
     }
   });
   draftCacheByContext.clear();
@@ -2129,6 +2383,9 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     });
 
     await loadThreads(workspace.workspaceId);
+    void refreshGitStatus(workspace.workspaceId, {
+      autoSelectFirstFile: store.getState().gitReview.active
+    });
   } catch (error: unknown) {
     setTurnExecutionPhase("error");
     if (submittedThreadId) {
@@ -2282,6 +2539,7 @@ function handleWorkspaceSelection(workspaceId: string): void {
   });
   setSelectedThreadId(null);
   restoreDraftPrompt(workspaceId, null);
+  resetGitReviewState(workspaceId);
 
   clearError();
   clearRuntimeEventQueue();
@@ -2296,6 +2554,9 @@ function handleWorkspaceSelection(workspaceId: string): void {
   void loadThreads(workspaceId)
     .then(() => {
       connectWorkspaceEvents(workspaceId, true);
+      void refreshGitStatus(workspaceId, {
+        autoSelectFirstFile: false
+      });
     })
     .catch((error: unknown) => {
       handleApiError(error, {
@@ -2410,6 +2671,46 @@ function attachHandlers(): void {
     handleWorkspaceSelection(workspaceId);
   });
 
+  dom.openGitReviewButton.addEventListener("click", () => {
+    void openGitReview();
+  });
+
+  dom.gitReviewBackButton.addEventListener("click", () => {
+    setGitReviewActive(false);
+  });
+
+  dom.gitReviewToggleFilesButton.addEventListener("click", () => {
+    const filesCollapsed = store.getState().gitReview.filesCollapsed;
+    setGitFilesCollapsed(!filesCollapsed);
+  });
+
+  dom.gitReviewRefreshButton.addEventListener("click", () => {
+    const workspaceId = store.getState().workspace.selectedWorkspaceId;
+    if (!workspaceId) {
+      return;
+    }
+
+    void refreshGitStatus(workspaceId, {
+      autoSelectFirstFile: true
+    });
+  });
+
+  dom.gitReviewFileList.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const button = target.closest<HTMLButtonElement>("button[data-path]");
+    const relativePath = button?.dataset.path;
+    const workspaceId = store.getState().workspace.selectedWorkspaceId;
+    if (!relativePath || !workspaceId) {
+      return;
+    }
+
+    if (window.matchMedia("(max-width: 899px)").matches) {
+      setGitFilesCollapsed(true);
+    }
+
+    void refreshGitDiff(workspaceId, relativePath);
+  });
+
   dom.threadList.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
     const button = target.closest<HTMLButtonElement>("button[data-thread-id]");
@@ -2466,14 +2767,20 @@ function attachHandlers(): void {
       return;
     }
 
-    void loadThreads(selectedWorkspaceId).catch((error: unknown) => {
-      handleApiError(error, {
-        action: "Refresh threads",
-        context: describeWorkspaceContext(selectedWorkspaceId),
-        nextStep: "Use retry to attempt thread refresh again",
-        retryAction: buildRetryThreadsAction(selectedWorkspaceId)
+    void loadThreads(selectedWorkspaceId)
+      .then(() => {
+        void refreshGitStatus(selectedWorkspaceId, {
+          autoSelectFirstFile: store.getState().gitReview.active
+        });
+      })
+      .catch((error: unknown) => {
+        handleApiError(error, {
+          action: "Refresh threads",
+          context: describeWorkspaceContext(selectedWorkspaceId),
+          nextStep: "Use retry to attempt thread refresh again",
+          retryAction: buildRetryThreadsAction(selectedWorkspaceId)
+        });
       });
-    });
   });
 
   dom.startThreadButton.addEventListener("click", () => {

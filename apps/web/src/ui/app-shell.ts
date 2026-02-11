@@ -16,6 +16,7 @@ export interface AppDomRefs {
   workspaceDisplayNameInput: HTMLInputElement;
   workspaceSubmitButton: HTMLButtonElement;
   workspaceList: HTMLElement;
+  openGitReviewButton: HTMLButtonElement;
   refreshThreadsButton: HTMLButtonElement;
   startThreadButton: HTMLButtonElement;
   threadList: HTMLElement;
@@ -44,6 +45,16 @@ export interface AppDomRefs {
   settingsShowInternalEventsInput: HTMLInputElement;
   settingsCompactStatusBurstsInput: HTMLInputElement;
   jumpLatestButton: HTMLButtonElement;
+  conversationPanel: HTMLElement;
+  gitReviewPanel: HTMLElement;
+  gitReviewBackButton: HTMLButtonElement;
+  gitReviewRefreshButton: HTMLButtonElement;
+  gitReviewTitle: HTMLElement;
+  gitReviewStatusText: HTMLElement;
+  gitReviewError: HTMLElement;
+  gitReviewToggleFilesButton: HTMLButtonElement;
+  gitReviewFileList: HTMLElement;
+  gitReviewDiffContainer: HTMLElement;
 }
 
 function requireElement<TElement extends Element>(root: ParentNode, selector: string): TElement {
@@ -153,6 +164,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
                 <button type="submit" data-role="workspace-submit">Add Workspace</button>
               </form>
             </details>
+            <div class="workspace-review-actions">
+              <button class="button-secondary" type="button" data-role="open-git-review">
+                Open Git Review
+              </button>
+            </div>
             <div class="list-container" data-role="workspace-list"></div>
           </section>
 
@@ -186,7 +202,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
         </aside>
 
         <section class="main-column">
-          <section class="conversation-panel">
+          <section class="conversation-panel" data-role="conversation-panel">
           <div class="conversation-header">
             <h2 data-role="conversation-title">Conversation</h2>
             <div class="conversation-context">
@@ -290,6 +306,38 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
               </ol>
             </div>
           </details>
+          </section>
+
+          <section class="git-review-panel is-hidden" data-role="git-review-panel">
+            <div class="git-review-header">
+              <div class="git-review-header-copy">
+                <p class="git-review-eyebrow">Workspace Review</p>
+                <h2 data-role="git-review-title">Git Diff</h2>
+                <p class="git-review-status" data-role="git-review-status">Select a workspace to inspect changes.</p>
+              </div>
+              <div class="git-review-header-actions">
+                <button class="button-secondary" type="button" data-role="git-review-refresh">Refresh</button>
+                <button class="button-secondary" type="button" data-role="git-review-back">Back to Chat</button>
+              </div>
+            </div>
+            <p class="git-review-error is-hidden" data-role="git-review-error"></p>
+            <div class="git-review-body">
+              <aside class="git-review-files">
+                <div class="git-review-files-header">
+                  <h3>Changed Files</h3>
+                  <button class="button-secondary git-review-toggle-files" type="button" data-role="git-review-toggle-files">
+                    Hide Files
+                  </button>
+                </div>
+                <div class="git-review-file-list" data-role="git-review-file-list">
+                  <p class="empty">No file changes detected.</p>
+                </div>
+              </aside>
+              <section class="git-review-diff">
+                <h3>Diff Preview</h3>
+                <div class="git-review-diff-content" data-role="git-review-diff"></div>
+              </section>
+            </div>
           </section>
         </section>
       </section>
@@ -400,6 +448,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     workspaceDisplayNameInput: requireElement<HTMLInputElement>(root, "[data-role='workspace-display-name']"),
     workspaceSubmitButton: requireElement<HTMLButtonElement>(root, "[data-role='workspace-submit']"),
     workspaceList: requireElement<HTMLElement>(root, "[data-role='workspace-list']"),
+    openGitReviewButton: requireElement<HTMLButtonElement>(root, "[data-role='open-git-review']"),
     refreshThreadsButton: requireElement<HTMLButtonElement>(root, "[data-role='refresh-threads']"),
     startThreadButton: requireElement<HTMLButtonElement>(root, "[data-role='start-thread']"),
     threadList: requireElement<HTMLElement>(root, "[data-role='thread-list']"),
@@ -430,6 +479,16 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
       root,
       "[data-role='settings-compact-status-bursts']"
     ),
-    jumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='jump-latest']")
+    jumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='jump-latest']"),
+    conversationPanel: requireElement<HTMLElement>(root, "[data-role='conversation-panel']"),
+    gitReviewPanel: requireElement<HTMLElement>(root, "[data-role='git-review-panel']"),
+    gitReviewBackButton: requireElement<HTMLButtonElement>(root, "[data-role='git-review-back']"),
+    gitReviewRefreshButton: requireElement<HTMLButtonElement>(root, "[data-role='git-review-refresh']"),
+    gitReviewTitle: requireElement<HTMLElement>(root, "[data-role='git-review-title']"),
+    gitReviewStatusText: requireElement<HTMLElement>(root, "[data-role='git-review-status']"),
+    gitReviewError: requireElement<HTMLElement>(root, "[data-role='git-review-error']"),
+    gitReviewToggleFilesButton: requireElement<HTMLButtonElement>(root, "[data-role='git-review-toggle-files']"),
+    gitReviewFileList: requireElement<HTMLElement>(root, "[data-role='git-review-file-list']"),
+    gitReviewDiffContainer: requireElement<HTMLElement>(root, "[data-role='git-review-diff']")
   };
 }

@@ -31,4 +31,8 @@ export class WorkspaceService {
   deleteWorkspace(workspaceId: string): boolean {
     return this.store.delete(workspaceId);
   }
+
+  getWorkspaceById(workspaceId: string): WorkspaceRecord | null {
+    return this.store.getById(workspaceId);
+  }
 }

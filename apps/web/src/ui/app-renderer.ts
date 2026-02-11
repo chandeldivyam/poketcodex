@@ -2,6 +2,7 @@ import type {
   AppState,
   AppStateKey,
   DraftImageAttachment,
+  GitStatusEntry,
   ThreadTranscriptState,
   TimelineEventCategory,
   TimelineEventEntry,
@@ -53,6 +54,219 @@ interface TurnStatusPresentation {
   label: string;
   description: string;
   className: string;
+}
+
+type GitFileStatusVariant = "modified" | "added" | "deleted" | "renamed" | "conflicted" | "neutral";
+type ParsedGitDiffLineKind = "context" | "add" | "remove" | "meta";
+
+interface ParsedGitDiffLine {
+  kind: ParsedGitDiffLineKind;
+  text: string;
+  marker: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+interface ParsedGitDiffHunk {
+  header: string;
+  lines: ParsedGitDiffLine[];
+}
+
+interface ParsedGitDiffBlock {
+  fileLabel: string | null;
+  metadata: string[];
+  hunks: ParsedGitDiffHunk[];
+}
+
+interface ParsedGitDiff {
+  blocks: ParsedGitDiffBlock[];
+}
+
+function gitStatusVariantForEntry(entry: GitStatusEntry): GitFileStatusVariant {
+  const token = `${entry.staged}${entry.unstaged}`;
+  if (token.includes("U")) {
+    return "conflicted";
+  }
+
+  if (token.includes("R") || token.includes("C")) {
+    return "renamed";
+  }
+
+  if (token.includes("A") || token.includes("?")) {
+    return "added";
+  }
+
+  if (token.includes("D")) {
+    return "deleted";
+  }
+
+  if (token.includes("M")) {
+    return "modified";
+  }
+
+  return "neutral";
+}
+
+function gitStatusGroupRank(label: string): number {
+  const normalized = label.trim().toLowerCase();
+  if (normalized === "conflicted") {
+    return 0;
+  }
+
+  if (normalized === "added" || normalized === "untracked") {
+    return 1;
+  }
+
+  if (normalized === "modified") {
+    return 2;
+  }
+
+  if (normalized === "renamed" || normalized === "copied") {
+    return 3;
+  }
+
+  if (normalized === "deleted") {
+    return 4;
+  }
+
+  return 5;
+}
+
+function parseDiffFileLabel(line: string): string | null {
+  const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const destinationPath = match[2]?.trim();
+  const sourcePath = match[1]?.trim();
+  if (destinationPath && destinationPath.length > 0 && destinationPath !== "/dev/null") {
+    return destinationPath;
+  }
+
+  if (sourcePath && sourcePath.length > 0 && sourcePath !== "/dev/null") {
+    return sourcePath;
+  }
+
+  return null;
+}
+
+function parseUnifiedGitDiff(diffText: string): ParsedGitDiff {
+  const normalizedLines = diffText.replace(/\r/g, "").split("\n");
+  const blocks: ParsedGitDiffBlock[] = [];
+
+  let currentBlock: ParsedGitDiffBlock | null = null;
+  let currentHunk: ParsedGitDiffHunk | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+
+  const ensureBlock = (): ParsedGitDiffBlock => {
+    if (currentBlock) {
+      return currentBlock;
+    }
+
+    const nextBlock: ParsedGitDiffBlock = {
+      fileLabel: null,
+      metadata: [],
+      hunks: []
+    };
+    blocks.push(nextBlock);
+    currentBlock = nextBlock;
+    return nextBlock;
+  };
+
+  for (let index = 0; index < normalizedLines.length; index += 1) {
+    const line = normalizedLines[index] ?? "";
+    const isTrailingSplitLine = index === normalizedLines.length - 1 && line.length === 0;
+    if (isTrailingSplitLine) {
+      continue;
+    }
+
+    if (line.startsWith("diff --git ")) {
+      const nextBlock: ParsedGitDiffBlock = {
+        fileLabel: parseDiffFileLabel(line),
+        metadata: [line],
+        hunks: []
+      };
+      blocks.push(nextBlock);
+      currentBlock = nextBlock;
+      currentHunk = null;
+      continue;
+    }
+
+    if (line.startsWith("@@ ")) {
+      const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      oldLine = Number.parseInt(hunkMatch?.[1] ?? "0", 10);
+      newLine = Number.parseInt(hunkMatch?.[2] ?? "0", 10);
+
+      const nextHunk: ParsedGitDiffHunk = {
+        header: line,
+        lines: []
+      };
+
+      const block = ensureBlock();
+      block.hunks.push(nextHunk);
+      currentHunk = nextHunk;
+      continue;
+    }
+
+    const block = ensureBlock();
+    if (!currentHunk) {
+      if (line.length > 0) {
+        block.metadata.push(line);
+      }
+      continue;
+    }
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      currentHunk.lines.push({
+        kind: "add",
+        marker: "+",
+        text: line.slice(1),
+        oldLine: null,
+        newLine
+      });
+      newLine += 1;
+      continue;
+    }
+
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      currentHunk.lines.push({
+        kind: "remove",
+        marker: "-",
+        text: line.slice(1),
+        oldLine,
+        newLine: null
+      });
+      oldLine += 1;
+      continue;
+    }
+
+    if (line.startsWith(" ")) {
+      currentHunk.lines.push({
+        kind: "context",
+        marker: " ",
+        text: line.slice(1),
+        oldLine,
+        newLine
+      });
+      oldLine += 1;
+      newLine += 1;
+      continue;
+    }
+
+    currentHunk.lines.push({
+      kind: "meta",
+      marker: "",
+      text: line,
+      oldLine: null,
+      newLine: null
+    });
+  }
+
+  return {
+    blocks: blocks.filter((block) => block.metadata.length > 0 || block.hunks.length > 0)
+  };
 }
 
 function formatElapsed(startedAtMs: number): string {
@@ -195,6 +409,29 @@ function truncateInlineText(value: string, maxLength = 90): string {
   }
 
   return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function formatGitBranchLabel(state: Readonly<AppState>): string {
+  const git = state.gitReview;
+  if (git.supported === false) {
+    return "Git not available in this workspace.";
+  }
+
+  if (git.loading) {
+    return "Loading git status...";
+  }
+
+  const branch = git.branch ?? "detached";
+  const relationParts: string[] = [];
+  if (git.ahead > 0) {
+    relationParts.push(`ahead ${git.ahead}`);
+  }
+  if (git.behind > 0) {
+    relationParts.push(`behind ${git.behind}`);
+  }
+  const relation = relationParts.length > 0 ? ` (${relationParts.join(", ")})` : "";
+  const summary = git.clean ? "clean workspace" : `${git.entries.length} file${git.entries.length === 1 ? "" : "s"} changed`;
+  return `${branch}${relation} · ${summary}`;
 }
 
 function looksLikeOpaqueThreadId(value: string): boolean {
@@ -449,7 +686,7 @@ export class AppRenderer {
   }
 
   renderAll(): void {
-    this.render(new Set(["session", "workspace", "thread", "stream"]));
+    this.render(new Set(["session", "workspace", "thread", "stream", "gitReview"]));
   }
 
   render(changedSlices: ReadonlySet<AppStateKey>): void {
@@ -457,7 +694,8 @@ export class AppRenderer {
       changedSlices.has("session") ||
       changedSlices.has("workspace") ||
       changedSlices.has("thread") ||
-      changedSlices.has("stream")
+      changedSlices.has("stream") ||
+      changedSlices.has("gitReview")
     ) {
       this.renderHeader();
       this.renderActionStates();
@@ -485,6 +723,10 @@ export class AppRenderer {
       this.renderTurnStatus();
       this.renderSettingsControls();
       this.renderEvents();
+    }
+
+    if (changedSlices.has("gitReview") || changedSlices.has("workspace") || changedSlices.has("session")) {
+      this.renderGitReview();
     }
   }
 
@@ -577,6 +819,26 @@ export class AppRenderer {
     );
     this.dom.composerAttachImageButton.disabled = mediaActionsDisabled;
     this.dom.composerImageInput.disabled = mediaActionsDisabled;
+
+    const gitReviewDisabled =
+      threadActionsDisabled ||
+      !state.workspace.selectedWorkspaceId ||
+      state.gitReview.loading ||
+      state.gitReview.supported === false;
+    this.dom.openGitReviewButton.disabled = gitReviewDisabled;
+    this.dom.openGitReviewButton.textContent =
+      state.gitReview.loading
+        ? "Checking Git..."
+        : state.gitReview.supported === false
+          ? "Git Not Available"
+          : "Open Git Review";
+    this.dom.gitReviewRefreshButton.disabled =
+      !state.workspace.selectedWorkspaceId || state.gitReview.loading || state.gitReview.diffLoading;
+    this.dom.gitReviewBackButton.disabled = !state.gitReview.active;
+    const hasFileEntries = state.gitReview.entries.length > 0;
+    this.dom.gitReviewToggleFilesButton.disabled =
+      !state.gitReview.active || !hasFileEntries || state.gitReview.loading || state.gitReview.supported === false;
+    this.dom.gitReviewToggleFilesButton.textContent = state.gitReview.filesCollapsed ? "Show Files" : "Hide Files";
   }
 
   private renderWorkspaceList(): void {
@@ -917,6 +1179,242 @@ export class AppRenderer {
     this.dom.settingsShowStatusEventsInput.checked = state.stream.showStatusEvents;
     this.dom.settingsShowInternalEventsInput.checked = state.stream.showInternalEvents;
     this.dom.settingsCompactStatusBurstsInput.checked = state.stream.compactStatusBursts;
+  }
+
+  private createGitFileItem(entry: GitStatusEntry, selectedPath: string | null): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `git-file-item ${selectedPath === entry.path ? "is-selected" : ""}`.trim();
+    button.dataset.path = entry.path;
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "git-file-item-row";
+
+    const pathLabel = document.createElement("strong");
+    pathLabel.className = "git-file-path";
+    pathLabel.textContent = entry.path;
+
+    const statusCode = `${entry.staged}${entry.unstaged}`.trim() || "--";
+    const status = document.createElement("span");
+    status.className = `git-file-status is-${gitStatusVariantForEntry(entry)}`;
+    status.textContent = `${entry.statusLabel} (${statusCode})`;
+
+    titleRow.append(pathLabel, status);
+
+    const meta = document.createElement("span");
+    meta.className = "git-file-meta";
+    const stagedCode = entry.staged === " " ? "-" : entry.staged;
+    const unstagedCode = entry.unstaged === " " ? "-" : entry.unstaged;
+    meta.textContent = `index ${stagedCode} · working tree ${unstagedCode}`;
+
+    button.append(titleRow, meta);
+
+    if (entry.originalPath) {
+      const rename = document.createElement("span");
+      rename.className = "git-file-rename";
+      rename.textContent = `from ${entry.originalPath}`;
+      button.append(rename);
+    }
+
+    return button;
+  }
+
+  private renderGitDiffPlaceholder(message: string): void {
+    const placeholder = renderEmptyMessage(message);
+    placeholder.classList.add("git-diff-placeholder");
+    this.dom.gitReviewDiffContainer.replaceChildren(placeholder);
+  }
+
+  private createParsedDiffLine(line: ParsedGitDiffLine): HTMLDivElement {
+    const row = document.createElement("div");
+    row.className = `git-diff-row git-diff-row-${line.kind}`;
+
+    const oldLine = document.createElement("span");
+    oldLine.className = "git-diff-line-number";
+    oldLine.textContent = line.oldLine === null ? "" : String(line.oldLine);
+
+    const newLine = document.createElement("span");
+    newLine.className = "git-diff-line-number";
+    newLine.textContent = line.newLine === null ? "" : String(line.newLine);
+
+    const marker = document.createElement("span");
+    marker.className = "git-diff-line-marker";
+    marker.textContent = line.marker;
+
+    const code = document.createElement("span");
+    code.className = "git-diff-line-code";
+    code.textContent = line.text;
+
+    row.append(oldLine, newLine, marker, code);
+    return row;
+  }
+
+  private createParsedDiffHunk(hunk: ParsedGitDiffHunk): HTMLElement {
+    const hunkElement = document.createElement("section");
+    hunkElement.className = "git-diff-hunk";
+
+    const header = document.createElement("div");
+    header.className = "git-diff-hunk-header";
+    header.textContent = hunk.header;
+
+    const lineContainer = document.createElement("div");
+    lineContainer.className = "git-diff-line-list";
+    for (const line of hunk.lines) {
+      lineContainer.append(this.createParsedDiffLine(line));
+    }
+
+    hunkElement.append(header, lineContainer);
+    return hunkElement;
+  }
+
+  private renderStructuredGitDiff(diffText: string, fallbackPath: string): void {
+    const parsedDiff = parseUnifiedGitDiff(diffText);
+    if (parsedDiff.blocks.length === 0) {
+      const raw = document.createElement("pre");
+      raw.className = "git-diff-raw";
+      raw.textContent = diffText;
+      this.dom.gitReviewDiffContainer.replaceChildren(raw);
+      return;
+    }
+
+    const view = document.createElement("div");
+    view.className = "git-diff-view";
+
+    for (const block of parsedDiff.blocks) {
+      const blockElement = document.createElement("section");
+      blockElement.className = "git-diff-file";
+
+      const fileHeader = document.createElement("div");
+      fileHeader.className = "git-diff-file-header";
+      fileHeader.textContent = block.fileLabel ?? fallbackPath;
+      blockElement.append(fileHeader);
+
+      if (block.metadata.length > 0) {
+        const metadata = document.createElement("div");
+        metadata.className = "git-diff-metadata";
+        for (const line of block.metadata) {
+          const metadataLine = document.createElement("span");
+          metadataLine.className = "git-diff-metadata-line";
+          metadataLine.textContent = line;
+          metadata.append(metadataLine);
+        }
+        blockElement.append(metadata);
+      }
+
+      if (block.hunks.length === 0) {
+        const noHunk = document.createElement("div");
+        noHunk.className = "git-diff-empty-hunks";
+        noHunk.textContent = "No textual hunks in this section.";
+        blockElement.append(noHunk);
+      } else {
+        for (const hunk of block.hunks) {
+          blockElement.append(this.createParsedDiffHunk(hunk));
+        }
+      }
+
+      view.append(blockElement);
+    }
+
+    this.dom.gitReviewDiffContainer.replaceChildren(view);
+  }
+
+  private renderGitReview(): void {
+    const state = this.readState();
+    const git = state.gitReview;
+
+    setHidden(this.dom.conversationPanel, git.active);
+    setHidden(this.dom.gitReviewPanel, !git.active);
+    this.dom.gitReviewPanel.classList.toggle("is-files-collapsed", git.filesCollapsed);
+
+    const workspaceName = selectActiveWorkspace(state)?.displayName ?? "Workspace";
+    this.dom.gitReviewTitle.textContent = `${workspaceName} Git Review`;
+    this.dom.gitReviewStatusText.textContent = formatGitBranchLabel(state);
+
+    if (git.error) {
+      setHidden(this.dom.gitReviewError, false);
+      this.dom.gitReviewError.textContent = git.error;
+    } else {
+      setHidden(this.dom.gitReviewError, true);
+      this.dom.gitReviewError.textContent = "";
+    }
+
+    if (git.supported === false) {
+      this.dom.gitReviewFileList.replaceChildren(renderEmptyMessage("Git is not enabled for this workspace."));
+      this.renderGitDiffPlaceholder("No diff available.");
+      return;
+    }
+
+    if (git.loading && git.entries.length === 0) {
+      this.dom.gitReviewFileList.replaceChildren(renderEmptyMessage("Loading changed files..."));
+      this.renderGitDiffPlaceholder("Fetching git status...");
+      return;
+    }
+
+    if (git.entries.length === 0) {
+      const cleanMessage = git.clean ? "Working tree is clean." : "No tracked changes found.";
+      this.dom.gitReviewFileList.replaceChildren(renderEmptyMessage(cleanMessage));
+      this.renderGitDiffPlaceholder("No diff selected.");
+      return;
+    }
+
+    const groupedEntries = new Map<string, GitStatusEntry[]>();
+    for (const entry of git.entries) {
+      const group = groupedEntries.get(entry.statusLabel);
+      if (group) {
+        group.push(entry);
+      } else {
+        groupedEntries.set(entry.statusLabel, [entry]);
+      }
+    }
+
+    const sortedGroupLabels = [...groupedEntries.keys()].sort((left, right) => {
+      const rankDelta = gitStatusGroupRank(left) - gitStatusGroupRank(right);
+      if (rankDelta !== 0) {
+        return rankDelta;
+      }
+      return left.localeCompare(right);
+    });
+
+    const fragment = document.createDocumentFragment();
+    for (const groupLabel of sortedGroupLabels) {
+      const groupEntries = groupedEntries.get(groupLabel);
+      if (!groupEntries || groupEntries.length === 0) {
+        continue;
+      }
+
+      const groupSection = document.createElement("section");
+      groupSection.className = "git-file-group";
+
+      const heading = document.createElement("p");
+      heading.className = "git-file-group-label";
+      heading.textContent = `${groupLabel} (${groupEntries.length})`;
+      groupSection.append(heading);
+
+      for (const entry of groupEntries) {
+        groupSection.append(this.createGitFileItem(entry, git.selectedPath));
+      }
+
+      fragment.append(groupSection);
+    }
+
+    this.dom.gitReviewFileList.replaceChildren(fragment);
+
+    if (git.diffLoading) {
+      this.renderGitDiffPlaceholder("Loading diff...");
+      return;
+    }
+
+    if (git.selectedPath && git.diff.trim().length > 0) {
+      this.renderStructuredGitDiff(git.diff, git.selectedPath);
+      return;
+    }
+
+    if (git.selectedPath && git.diff.trim().length === 0) {
+      this.renderGitDiffPlaceholder("No patch content for the selected file.");
+      return;
+    }
+
+    this.renderGitDiffPlaceholder("Select a file to inspect its diff.");
   }
 
   private selectedThreadTranscript(state: Readonly<AppState>): ThreadTranscriptState | null {

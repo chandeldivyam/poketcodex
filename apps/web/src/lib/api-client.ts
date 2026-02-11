@@ -27,6 +27,31 @@ export interface ThreadListResponse {
   metadata: ThreadMetadataRecord[];
 }
 
+export interface GitStatusEntryRecord {
+  path: string;
+  staged: string;
+  unstaged: string;
+  statusLabel: string;
+  originalPath?: string;
+}
+
+export interface GitStatusRecord {
+  enabled: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  clean: boolean;
+  entries: GitStatusEntryRecord[];
+}
+
+export interface GitDiffRecord {
+  path: string;
+  diff: string;
+  isUntracked: boolean;
+  hasStagedChanges: boolean;
+  hasUnstagedChanges: boolean;
+}
+
 export class ApiClientError extends Error {
   readonly statusCode: number;
   readonly payload: unknown;
@@ -246,5 +271,18 @@ export class ApiClient {
     );
 
     return response.result;
+  }
+
+  async getWorkspaceGitStatus(workspaceId: string): Promise<GitStatusRecord> {
+    const response = await this.request<{ git: GitStatusRecord }>(`/api/workspaces/${workspaceId}/git/status`);
+    return response.git;
+  }
+
+  async getWorkspaceGitDiff(workspaceId: string, relativePath: string): Promise<GitDiffRecord> {
+    const encodedPath = encodeURIComponent(relativePath);
+    const response = await this.request<{ git: GitDiffRecord }>(
+      `/api/workspaces/${workspaceId}/git/diff?path=${encodedPath}`
+    );
+    return response.git;
   }
 }

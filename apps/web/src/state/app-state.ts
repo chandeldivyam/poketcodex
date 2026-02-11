@@ -106,11 +106,37 @@ export interface StreamState {
   backgroundTerminalWaiting: boolean;
 }
 
+export interface GitStatusEntry {
+  path: string;
+  staged: string;
+  unstaged: string;
+  statusLabel: string;
+  originalPath?: string;
+}
+
+export interface GitReviewState {
+  active: boolean;
+  loading: boolean;
+  filesCollapsed: boolean;
+  supported: boolean | null;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  clean: boolean;
+  entries: GitStatusEntry[];
+  selectedPath: string | null;
+  diff: string;
+  diffLoading: boolean;
+  error: string | null;
+  workspaceId: string | null;
+}
+
 export interface AppState {
   session: SessionState;
   workspace: WorkspaceState;
   thread: ThreadState;
   stream: StreamState;
+  gitReview: GitReviewState;
 }
 
 export type AppStateKey = keyof AppState;

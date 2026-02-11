@@ -7,6 +7,8 @@ import type { WorkspaceAppServerPool } from "./codex/workspace-app-server-pool.j
 import { workspaceEventsPlugin } from "./events/workspace-events-plugin.js";
 import type { InMemorySessionStore } from "./auth/session-store.js";
 import type { AppConfig, LogLevel } from "./config.js";
+import { gitPlugin } from "./git/plugin.js";
+import type { GitService } from "./git/service.js";
 import { createLoggerOptions } from "./logger.js";
 import { threadPlugin } from "./threads/plugin.js";
 import type { ThreadService } from "./threads/service.js";
@@ -27,6 +29,7 @@ export interface BuildAppOptions {
   threadService?: ThreadService;
   turnService?: TurnService;
   runtimePool?: WorkspaceAppServerPool;
+  gitService?: GitService;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -84,6 +87,12 @@ export function buildApp(options: BuildAppOptions = {}) {
   if (options.runtimePool) {
     app.register(workspaceEventsPlugin, {
       runtimePool: options.runtimePool
+    });
+  }
+
+  if (options.gitService) {
+    app.register(gitPlugin, {
+      gitService: options.gitService
     });
   }
 
