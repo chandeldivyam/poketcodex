@@ -23,6 +23,7 @@ import { ReconnectingWorkspaceSocket } from "./lib/ws-reconnect.js";
 import type {
   AppState,
   AppStateKey,
+  DraftImageAttachment,
   ThreadTranscriptHydration,
   ThreadTranscriptState,
   TimelineEventCategory,
@@ -45,6 +46,15 @@ const STORAGE_COMPACT_STATUS_BURSTS_KEY = "poketcodex.compactStatusBursts";
 const MAX_STORED_EVENTS = 240;
 const RUNTIME_EVENT_BATCH_MS = 48;
 const MAX_TRANSCRIPT_ITEMS = 320;
+const MAX_DRAFT_IMAGES = 3;
+const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_DRAFT_IMAGE_BYTES = 1_500_000;
+const MAX_TOTAL_DRAFT_IMAGE_BYTES = 5_000_000;
+const DRAFT_IMAGE_MAX_DIMENSION_PX = 1_560;
+const DRAFT_IMAGE_JPEG_INITIAL_QUALITY = 0.84;
+const DRAFT_IMAGE_JPEG_MIN_QUALITY = 0.55;
+const TURN_START_TIMEOUT_MS = 60_000;
+const MAX_TURN_REQUEST_BODY_BYTES = 7_500_000;
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 
@@ -62,6 +72,159 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1_048_576) {
+    return `${Math.round((bytes / 1_024) * 10) / 10} KB`;
+  }
+
+  return `${Math.round((bytes / 1_048_576) * 10) / 10} MB`;
+}
+
+function cloneDraftImages(images: DraftImageAttachment[]): DraftImageAttachment[] {
+  return images.map((image) => ({ ...image }));
+}
+
+function totalDraftImageBytes(images: DraftImageAttachment[]): number {
+  return images.reduce((sum, image) => sum + image.sizeBytes, 0);
+}
+
+function createDraftImageId(): string {
+  return `img-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function validateSourceImageFile(file: File): void {
+  if (!file.type.startsWith("image/")) {
+    throw new Error(`"${file.name}" is not an image file.`);
+  }
+
+  if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+    throw new Error(
+      `"${file.name}" exceeds ${formatBytes(MAX_SOURCE_IMAGE_BYTES)}. Choose a smaller image.`
+    );
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error(`Failed to read "${file.name}" as data URL.`));
+    };
+    reader.onerror = () => {
+      reject(new Error(`Failed to read "${file.name}".`));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      resolve(image);
+    };
+    image.onerror = () => {
+      reject(new Error("Image decode failed."));
+    };
+    image.src = dataUrl;
+  });
+}
+
+function fitWithinBounds(width: number, height: number, maxDimension: number): { width: number; height: number } {
+  if (width <= maxDimension && height <= maxDimension) {
+    return { width, height };
+  }
+
+  if (width >= height) {
+    const scale = maxDimension / width;
+    return {
+      width: maxDimension,
+      height: Math.max(1, Math.round(height * scale))
+    };
+  }
+
+  const scale = maxDimension / height;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: maxDimension
+  };
+}
+
+async function compressDraftImage(file: File): Promise<{
+  dataUrl: string;
+  mimeType: string;
+  width: number;
+  height: number;
+}> {
+  const rawDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImageFromDataUrl(rawDataUrl);
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Image processing is unavailable in this browser.");
+  }
+
+  const fitted = fitWithinBounds(image.naturalWidth, image.naturalHeight, DRAFT_IMAGE_MAX_DIMENSION_PX);
+  let targetWidth = fitted.width;
+  let targetHeight = fitted.height;
+  let mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  let quality = DRAFT_IMAGE_JPEG_INITIAL_QUALITY;
+  let attempts = 0;
+  let outputDataUrl = rawDataUrl;
+
+  while (attempts < 8) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    context.clearRect(0, 0, targetWidth, targetHeight);
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+    outputDataUrl = canvas.toDataURL(mimeType, mimeType === "image/jpeg" ? quality : undefined);
+
+    if (outputDataUrl.length <= MAX_DRAFT_IMAGE_BYTES) {
+      break;
+    }
+
+    if (mimeType === "image/png") {
+      mimeType = "image/jpeg";
+      quality = DRAFT_IMAGE_JPEG_INITIAL_QUALITY;
+      attempts += 1;
+      continue;
+    }
+
+    if (quality > DRAFT_IMAGE_JPEG_MIN_QUALITY + 0.04) {
+      quality -= 0.08;
+      attempts += 1;
+      continue;
+    }
+
+    targetWidth = Math.max(320, Math.round(targetWidth * 0.84));
+    targetHeight = Math.max(320, Math.round(targetHeight * 0.84));
+    quality = DRAFT_IMAGE_JPEG_INITIAL_QUALITY;
+    attempts += 1;
+  }
+
+  if (outputDataUrl.length > MAX_DRAFT_IMAGE_BYTES) {
+    throw new Error(
+      `"${file.name}" is still too large after compression. Try a smaller image or crop it first.`
+    );
+  }
+
+  return {
+    dataUrl: outputDataUrl,
+    mimeType,
+    width: targetWidth,
+    height: targetHeight
+  };
 }
 
 function createDefaultThreadTranscriptState(
@@ -351,6 +514,8 @@ const initialState: AppState = {
   stream: {
     socketState: "disconnected",
     draftPrompt: "",
+    draftImages: [],
+    imageAttachmentBusy: false,
     events: [],
     showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
     showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
@@ -380,7 +545,11 @@ const pendingRuntimeEvents: Array<{
   options: AppendEventOptions;
 }> = [];
 const pendingChangedSlices = new Set<AppStateKey>();
-const draftCacheByContext = new Map<string, string>();
+interface DraftComposerCacheEntry {
+  prompt: string;
+  images: DraftImageAttachment[];
+}
+const draftCacheByContext = new Map<string, DraftComposerCacheEntry>();
 const activeBackgroundTerminalProcesses = new Map<string, string>();
 type RetryAction = {
   label: string;
@@ -590,17 +759,24 @@ function buildDraftContextKey(workspaceId: string | null, threadId: string | nul
   return `${workspaceId}::${threadId ?? "__no_thread__"}`;
 }
 
-function updateDraftCacheForContext(contextKey: string | null, draftPrompt: string): void {
+function updateDraftCacheForContext(
+  contextKey: string | null,
+  draftPrompt: string,
+  draftImages: DraftImageAttachment[]
+): void {
   if (!contextKey) {
     return;
   }
 
-  if (draftPrompt.trim().length === 0) {
+  if (draftPrompt.trim().length === 0 && draftImages.length === 0) {
     draftCacheByContext.delete(contextKey);
     return;
   }
 
-  draftCacheByContext.set(contextKey, draftPrompt);
+  draftCacheByContext.set(contextKey, {
+    prompt: draftPrompt,
+    images: cloneDraftImages(draftImages)
+  });
 }
 
 function getCurrentDraftContextKey(): string | null {
@@ -609,7 +785,8 @@ function getCurrentDraftContextKey(): string | null {
 }
 
 function persistCurrentDraftPrompt(): void {
-  updateDraftCacheForContext(getCurrentDraftContextKey(), store.getState().stream.draftPrompt);
+  const stream = store.getState().stream;
+  updateDraftCacheForContext(getCurrentDraftContextKey(), stream.draftPrompt, stream.draftImages);
 }
 
 function setDraftPrompt(draftPrompt: string): void {
@@ -618,10 +795,136 @@ function setDraftPrompt(draftPrompt: string): void {
   });
 }
 
+function setDraftImages(draftImages: DraftImageAttachment[]): void {
+  store.patchSlice("stream", {
+    draftImages
+  });
+}
+
+function setImageAttachmentBusy(imageAttachmentBusy: boolean): void {
+  store.patchSlice("stream", {
+    imageAttachmentBusy
+  });
+}
+
 function restoreDraftPrompt(workspaceId: string | null, threadId: string | null): void {
   const contextKey = buildDraftContextKey(workspaceId, threadId);
-  const cachedPrompt = contextKey ? draftCacheByContext.get(contextKey) ?? "" : "";
-  setDraftPrompt(cachedPrompt);
+  const cached = contextKey ? draftCacheByContext.get(contextKey) ?? null : null;
+  setDraftPrompt(cached?.prompt ?? "");
+  setDraftImages(cached ? cloneDraftImages(cached.images) : []);
+  setImageAttachmentBusy(false);
+}
+
+async function handleDraftImageSelection(
+  files: FileList | null,
+  source: DraftImageAttachment["source"]
+): Promise<void> {
+  if (!files || files.length === 0) {
+    return;
+  }
+
+  const currentState = store.getState();
+  const contextKeyAtStart = getCurrentDraftContextKey();
+  const draftPromptAtStart = currentState.stream.draftPrompt;
+  if (currentState.stream.imageAttachmentBusy) {
+    return;
+  }
+
+  const remainingSlots = MAX_DRAFT_IMAGES - currentState.stream.draftImages.length;
+  if (remainingSlots <= 0) {
+    setError(`Up to ${MAX_DRAFT_IMAGES} images are allowed per message.`);
+    return;
+  }
+
+  const imageFiles = [...files].filter((file) => file.type.startsWith("image/")).slice(0, remainingSlots);
+  if (imageFiles.length === 0) {
+    setError("No image files were selected.");
+    return;
+  }
+
+  clearError();
+  setImageAttachmentBusy(true);
+
+  try {
+    let nextImages = cloneDraftImages(currentState.stream.draftImages);
+
+    for (const file of imageFiles) {
+      validateSourceImageFile(file);
+      const compressed = await compressDraftImage(file);
+      const attachment: DraftImageAttachment = {
+        id: createDraftImageId(),
+        name: file.name && file.name.trim().length > 0 ? file.name : `image-${nextImages.length + 1}.jpg`,
+        mimeType: compressed.mimeType,
+        dataUrl: compressed.dataUrl,
+        sizeBytes: compressed.dataUrl.length,
+        width: compressed.width,
+        height: compressed.height,
+        source
+      };
+
+      const combinedSize = totalDraftImageBytes(nextImages) + attachment.sizeBytes;
+      if (combinedSize > MAX_TOTAL_DRAFT_IMAGE_BYTES) {
+        throw new Error(
+          `Image payload exceeds ${formatBytes(MAX_TOTAL_DRAFT_IMAGE_BYTES)}. Remove an attachment and retry.`
+        );
+      }
+
+      nextImages = [...nextImages, attachment];
+    }
+
+    if (contextKeyAtStart !== getCurrentDraftContextKey()) {
+      updateDraftCacheForContext(contextKeyAtStart, draftPromptAtStart, nextImages);
+      appendEvent("Image attached to previous draft context.", "system", {
+        category: "status"
+      });
+      return;
+    }
+
+    setDraftImages(nextImages);
+    updateDraftCacheForContext(getCurrentDraftContextKey(), store.getState().stream.draftPrompt, nextImages);
+
+    if (files.length > imageFiles.length) {
+      appendEvent(`Only ${MAX_DRAFT_IMAGES} images are allowed per turn.`, "system", {
+        category: "status"
+      });
+    }
+  } catch (error: unknown) {
+    setError(`Image attach failed: ${describeError(error)}`);
+  } finally {
+    setImageAttachmentBusy(false);
+  }
+}
+
+function removeDraftImage(imageId: string): void {
+  const nextImages = store.getState().stream.draftImages.filter((image) => image.id !== imageId);
+  setDraftImages(nextImages);
+  updateDraftCacheForContext(getCurrentDraftContextKey(), store.getState().stream.draftPrompt, nextImages);
+}
+
+function buildTurnInput(prompt: string, draftImages: DraftImageAttachment[]): Array<Record<string, unknown>> {
+  const input: Array<Record<string, unknown>> = [];
+
+  if (prompt.trim().length > 0) {
+    input.push({
+      type: "text",
+      text: prompt
+    });
+  }
+
+  for (const image of draftImages) {
+    input.push({
+      type: "image",
+      url: image.dataUrl,
+      image_url: image.dataUrl
+    });
+  }
+
+  return input;
+}
+
+function estimateJsonSizeBytes(payload: unknown): number {
+  const encoded = new TextEncoder().encode(JSON.stringify(payload));
+  return encoded.length;
 }
 
 function describeWorkspaceContext(workspaceId: string | null): string | null {
@@ -1528,6 +1831,8 @@ async function loginWithPassword(password: string): Promise<void> {
 
   store.patchSlice("stream", {
     draftPrompt: "",
+    draftImages: [],
+    imageAttachmentBusy: false,
     events: [],
     turnPhase: "idle",
     turnStartedAtMs: null
@@ -1635,6 +1940,8 @@ async function handleLogout(): Promise<void> {
     stream: {
       socketState: "disconnected",
       draftPrompt: "",
+      draftImages: [],
+      imageAttachmentBusy: false,
       events: [],
       showInternalEvents: readStorageBoolean(STORAGE_SHOW_INTERNAL_EVENTS_KEY, false),
       showStatusEvents: readStorageBoolean(STORAGE_SHOW_STATUS_EVENTS_KEY, false),
@@ -1732,14 +2039,20 @@ async function handleTurnSubmit(event: Event): Promise<void> {
 
   const formData = new FormData(dom.turnForm);
   const prompt = formData.get("prompt");
+  const normalizedPrompt = typeof prompt === "string" ? prompt.trim() : "";
+  const streamState = store.getState().stream;
 
-  if (typeof prompt !== "string" || prompt.trim().length === 0) {
-    setError("Prompt is required");
+  if (streamState.imageAttachmentBusy) {
+    setError("Image processing is still in progress. Wait a moment and retry.");
     return;
   }
 
-  const normalizedPrompt = prompt.trim();
-  const existingTurnPhase = store.getState().stream.turnPhase;
+  if (normalizedPrompt.length === 0 && streamState.draftImages.length === 0) {
+    setError("Prompt or at least one image is required.");
+    return;
+  }
+
+  const existingTurnPhase = streamState.turnPhase;
   if (existingTurnPhase === "submitting" || existingTurnPhase === "interrupting") {
     setError("A turn request is already in progress. Wait for completion and retry.");
     return;
@@ -1755,7 +2068,20 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     explicitStartedAtMs: Date.now()
   });
   setBusy(true);
-  appendEvent(`Prompt: ${normalizedPrompt}`, "user");
+  if (normalizedPrompt.length > 0) {
+    appendEvent(`Prompt: ${normalizedPrompt}`, "user");
+  } else {
+    appendEvent("Prompt: [image-only]", "user");
+  }
+  if (streamState.draftImages.length > 0) {
+    appendEvent(
+      `Attached ${streamState.draftImages.length} image${streamState.draftImages.length === 1 ? "" : "s"}`,
+      "system",
+      {
+        category: "input"
+      }
+    );
+  }
 
   let submittedThreadId: string | null = null;
 
@@ -1763,17 +2089,22 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     const csrfToken = requireCsrfToken();
     submittedThreadId = await ensureThreadForTurn(workspace.workspaceId, csrfToken);
 
+    const turnInput = buildTurnInput(normalizedPrompt, store.getState().stream.draftImages);
     const payload: Record<string, unknown> = {
       threadId: submittedThreadId,
-      input: [
-        {
-          type: "text",
-          text: normalizedPrompt
-        }
-      ]
+      input: turnInput
     };
 
-    const result = await apiClient.startTurn(workspace.workspaceId, csrfToken, payload);
+    const estimatedPayloadSize = estimateJsonSizeBytes(payload);
+    if (estimatedPayloadSize > MAX_TURN_REQUEST_BODY_BYTES) {
+      throw new Error(
+        `Image payload is too large (${formatBytes(estimatedPayloadSize)}). Remove an image or use a smaller photo.`
+      );
+    }
+
+    const result = await apiClient.startTurn(workspace.workspaceId, csrfToken, payload, {
+      timeoutMs: TURN_START_TIMEOUT_MS
+    });
     const threadId = extractThreadIdFromTurnResult(result);
     const effectiveThreadId = threadId ?? submittedThreadId;
     if (effectiveThreadId) {
@@ -1789,10 +2120,13 @@ async function handleTurnSubmit(event: Event): Promise<void> {
     }
     appendEvent("Turn started", "runtime");
     dom.turnForm.reset();
+    dom.composerImageInput.value = "";
+    dom.composerCameraInput.value = "";
 
-    updateDraftCacheForContext(getCurrentDraftContextKey(), "");
+    updateDraftCacheForContext(getCurrentDraftContextKey(), "", []);
     store.patchSlice("stream", {
-      draftPrompt: ""
+      draftPrompt: "",
+      draftImages: []
     });
 
     await loadThreads(workspace.workspaceId);
@@ -2015,7 +2349,44 @@ function attachHandlers(): void {
   dom.turnPromptInput.addEventListener("input", () => {
     const draftPrompt = dom.turnPromptInput.value;
     setDraftPrompt(draftPrompt);
-    updateDraftCacheForContext(getCurrentDraftContextKey(), draftPrompt);
+    updateDraftCacheForContext(getCurrentDraftContextKey(), draftPrompt, store.getState().stream.draftImages);
+  });
+
+  dom.composerAttachImageButton.addEventListener("click", () => {
+    if (dom.composerImageInput.disabled) {
+      return;
+    }
+
+    dom.composerImageInput.click();
+  });
+
+  dom.composerCameraCaptureButton.addEventListener("click", () => {
+    if (dom.composerCameraInput.disabled) {
+      return;
+    }
+
+    dom.composerCameraInput.click();
+  });
+
+  dom.composerImageInput.addEventListener("change", () => {
+    void handleDraftImageSelection(dom.composerImageInput.files, "upload");
+    dom.composerImageInput.value = "";
+  });
+
+  dom.composerCameraInput.addEventListener("change", () => {
+    void handleDraftImageSelection(dom.composerCameraInput.files, "camera");
+    dom.composerCameraInput.value = "";
+  });
+
+  dom.composerImageList.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    const button = target.closest<HTMLButtonElement>("button[data-action='remove-draft-image']");
+    const imageId = button?.dataset.imageId;
+    if (!imageId) {
+      return;
+    }
+
+    removeDraftImage(imageId);
   });
 
   dom.turnPromptInput.addEventListener("keydown", (event) => {

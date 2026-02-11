@@ -79,9 +79,22 @@ export interface TimelineEventEntry {
   details?: string;
 }
 
+export interface DraftImageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  source: "upload" | "camera";
+}
+
 export interface StreamState {
   socketState: SocketConnectionState;
   draftPrompt: string;
+  draftImages: DraftImageAttachment[];
+  imageAttachmentBusy: boolean;
   events: TimelineEventEntry[];
   showInternalEvents: boolean;
   showStatusEvents: boolean;

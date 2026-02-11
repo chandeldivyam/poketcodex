@@ -24,6 +24,11 @@ export interface AppDomRefs {
   selectedThreadLabel: HTMLElement;
   turnForm: HTMLFormElement;
   turnPromptInput: HTMLTextAreaElement;
+  composerAttachImageButton: HTMLButtonElement;
+  composerCameraCaptureButton: HTMLButtonElement;
+  composerImageInput: HTMLInputElement;
+  composerCameraInput: HTMLInputElement;
+  composerImageList: HTMLElement;
   turnStatusChip: HTMLElement;
   turnStatusText: HTMLElement;
   backgroundTerminalRow: HTMLElement;
@@ -174,8 +179,27 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           <form id="turn-form" class="composer-form">
             <label>
               Prompt
-              <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." required data-role="turn-prompt"></textarea>
+              <textarea id="turn-prompt" name="prompt" rows="3" placeholder="Ask Codex..." data-role="turn-prompt"></textarea>
             </label>
+            <div class="composer-media-actions">
+              <input
+                class="is-hidden"
+                type="file"
+                accept="image/*"
+                multiple
+                data-role="composer-image-input"
+              />
+              <input
+                class="is-hidden"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                data-role="composer-camera-input"
+              />
+              <button class="button-secondary" type="button" data-role="composer-attach-image">Add Image</button>
+              <button class="button-secondary" type="button" data-role="composer-camera-capture">Camera</button>
+            </div>
+            <div class="composer-image-list is-hidden" data-role="composer-image-list"></div>
             <div class="turn-status" data-role="turn-status">
               <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
               <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
@@ -265,6 +289,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     selectedThreadLabel: requireElement<HTMLElement>(root, "[data-role='selected-thread']"),
     turnForm: requireElement<HTMLFormElement>(root, "#turn-form"),
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
+    composerAttachImageButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-attach-image']"),
+    composerCameraCaptureButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-camera-capture']"),
+    composerImageInput: requireElement<HTMLInputElement>(root, "[data-role='composer-image-input']"),
+    composerCameraInput: requireElement<HTMLInputElement>(root, "[data-role='composer-camera-input']"),
+    composerImageList: requireElement<HTMLElement>(root, "[data-role='composer-image-list']"),
     turnStatusChip: requireElement<HTMLElement>(root, "[data-role='turn-status-chip']"),
     turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
     backgroundTerminalRow: requireElement<HTMLElement>(root, "[data-role='background-terminal-row']"),

@@ -15,6 +15,8 @@ import type { TurnService } from "./turns/service.js";
 import { workspacePlugin } from "./workspaces/plugin.js";
 import type { WorkspaceService } from "./workspaces/service.js";
 
+const JSON_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+
 export interface BuildAppOptions {
   logger?: boolean;
   logLevel?: LogLevel;
@@ -42,6 +44,7 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   const app = Fastify({
     logger: loggerOptions,
+    bodyLimit: JSON_BODY_LIMIT_BYTES,
     requestIdHeader: "x-request-id",
     genReqId(request) {
       const incomingRequestId = request.headers["x-request-id"];

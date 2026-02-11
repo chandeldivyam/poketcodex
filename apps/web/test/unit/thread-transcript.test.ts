@@ -23,7 +23,10 @@ describe("thread transcript normalization", () => {
               {
                 id: "item-user",
                 type: "userMessage",
-                content: [{ type: "text", text: "Hey" }]
+                content: [
+                  { type: "text", text: "Hey" },
+                  { type: "local_image", path: "/tmp/test.png" }
+                ]
               },
               {
                 id: "item-assistant",
@@ -54,7 +57,7 @@ describe("thread transcript normalization", () => {
       id: "item-user",
       kind: "message",
       role: "user",
-      text: "Hey",
+      text: "Hey\n[image]",
       turnId: "turn-1"
     });
     expect(items[1]).toMatchObject({

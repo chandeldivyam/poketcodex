@@ -48,6 +48,8 @@ function createState(): AppState {
     stream: {
       socketState: "connected",
       draftPrompt: "",
+      draftImages: [],
+      imageAttachmentBusy: false,
       events: [],
       showInternalEvents: false,
       showStatusEvents: false,

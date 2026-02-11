@@ -26,6 +26,8 @@ function createInitialState(): AppState {
     stream: {
       socketState: "disconnected",
       draftPrompt: "",
+      draftImages: [],
+      imageAttachmentBusy: false,
       events: [],
       showInternalEvents: false,
       showStatusEvents: false,

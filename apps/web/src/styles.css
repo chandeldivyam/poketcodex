@@ -412,6 +412,69 @@ form {
   font-size: 0.88rem;
 }
 
+.composer-media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.composer-media-actions button {
+  min-height: 34px;
+}
+
+.composer-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.composer-image-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.4rem;
+  background: var(--bg-2);
+}
+
+.composer-image-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  flex-shrink: 0;
+}
+
+.composer-image-meta {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.composer-image-name {
+  font-size: 0.74rem;
+  color: var(--ink);
+  max-width: 170px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-image-detail {
+  font-size: 0.64rem;
+  color: var(--ink-muted);
+}
+
+.composer-image-remove {
+  min-height: 26px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.68rem;
+}
+
 /* ── List containers (sidebar items) ── */
 .list-container {
   margin-top: var(--space-2);
@@ -1320,6 +1383,18 @@ form {
 
   .turn-actions button {
     min-height: 44px;
+  }
+
+  .composer-media-actions button {
+    min-height: 42px;
+  }
+
+  .composer-image-chip {
+    width: 100%;
+  }
+
+  .composer-image-name {
+    max-width: min(55vw, 240px);
   }
 
   .turn-shortcuts {

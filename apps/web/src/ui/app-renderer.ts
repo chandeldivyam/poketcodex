@@ -1,6 +1,7 @@
 import type {
   AppState,
   AppStateKey,
+  DraftImageAttachment,
   ThreadTranscriptState,
   TimelineEventCategory,
   TimelineEventEntry,
@@ -193,6 +194,18 @@ function truncateInlineText(value: string, maxLength = 90): string {
   return `${normalized.slice(0, maxLength - 3)}...`;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1_024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1_048_576) {
+    return `${Math.round((bytes / 1_024) * 10) / 10} KB`;
+  }
+
+  return `${Math.round((bytes / 1_048_576) * 10) / 10} MB`;
+}
+
 function shouldCollapseTimelineMessage(message: string): boolean {
   const lineCount = message.split(/\r?\n/).length;
   return message.length >= TIMELINE_MESSAGE_COLLAPSE_LENGTH || lineCount >= TIMELINE_MESSAGE_COLLAPSE_LINES;
@@ -366,6 +379,8 @@ export class AppRenderer {
   private lastRenderedShowInternalEvents = false;
   private lastRenderedShowStatusEvents = false;
   private lastRenderedCompactStatusBursts = true;
+  private lastRenderedDraftImagesRef: DraftImageAttachment[] | null = null;
+  private lastRenderedImageAttachmentBusy = false;
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
@@ -425,6 +440,7 @@ export class AppRenderer {
 
     if (changedSlices.has("stream")) {
       this.renderDraftPrompt();
+      this.renderDraftImages();
       this.renderTurnStatus();
       this.renderSettingsControls();
       this.renderEvents();
@@ -493,7 +509,10 @@ export class AppRenderer {
     this.dom.reconnectEventsButton.disabled = threadActionsDisabled;
     this.dom.refreshThreadsButton.disabled = threadActionsDisabled;
     this.dom.startThreadButton.disabled = threadActionsDisabled;
-    this.dom.startTurnButton.disabled = threadActionsDisabled || turnRequestInFlight;
+    this.dom.startTurnButton.disabled =
+      threadActionsDisabled ||
+      turnRequestInFlight ||
+      state.stream.imageAttachmentBusy;
     this.dom.interruptTurnButton.disabled =
       threadActionsDisabled ||
       turnContextMissing ||
@@ -504,6 +523,17 @@ export class AppRenderer {
     this.dom.settingsShowStatusEventsInput.disabled = disableSettings;
     this.dom.settingsShowInternalEventsInput.disabled = disableSettings;
     this.dom.settingsCompactStatusBurstsInput.disabled = disableSettings;
+
+    const mediaActionsDisabled =
+      threadActionsDisabled ||
+      turnRequestInFlight ||
+      state.stream.imageAttachmentBusy;
+    this.dom.composerAttachImageButton.textContent = state.stream.imageAttachmentBusy ? "Processing..." : "Add Image";
+    this.dom.composerCameraCaptureButton.textContent = state.stream.imageAttachmentBusy ? "Processing..." : "Camera";
+    this.dom.composerAttachImageButton.disabled = mediaActionsDisabled;
+    this.dom.composerCameraCaptureButton.disabled = mediaActionsDisabled;
+    this.dom.composerImageInput.disabled = mediaActionsDisabled;
+    this.dom.composerCameraInput.disabled = mediaActionsDisabled;
   }
 
   private renderWorkspaceList(): void {
@@ -721,6 +751,70 @@ export class AppRenderer {
     if (this.dom.turnPromptInput.value !== state.stream.draftPrompt) {
       this.dom.turnPromptInput.value = state.stream.draftPrompt;
     }
+  }
+
+  private createDraftImageChip(image: DraftImageAttachment, disableRemove: boolean): HTMLDivElement {
+    const chip = document.createElement("div");
+    chip.className = "composer-image-chip";
+    chip.dataset.imageId = image.id;
+
+    const thumb = document.createElement("img");
+    thumb.className = "composer-image-thumb";
+    thumb.src = image.dataUrl;
+    thumb.alt = image.name;
+    thumb.loading = "lazy";
+
+    const meta = document.createElement("div");
+    meta.className = "composer-image-meta";
+
+    const name = document.createElement("span");
+    name.className = "composer-image-name";
+    name.textContent = image.name;
+
+    const detail = document.createElement("span");
+    detail.className = "composer-image-detail";
+    detail.textContent = `${image.width}x${image.height} · ${formatBytes(image.sizeBytes)} · ${image.source}`;
+
+    meta.append(name, detail);
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "button-secondary composer-image-remove";
+    removeButton.dataset.action = "remove-draft-image";
+    removeButton.dataset.imageId = image.id;
+    removeButton.textContent = "Remove";
+    removeButton.disabled = disableRemove;
+
+    chip.append(thumb, meta, removeButton);
+    return chip;
+  }
+
+  private renderDraftImages(): void {
+    const state = this.readState();
+    const shouldSkip =
+      this.lastRenderedDraftImagesRef === state.stream.draftImages &&
+      this.lastRenderedImageAttachmentBusy === state.stream.imageAttachmentBusy;
+    if (shouldSkip) {
+      return;
+    }
+
+    if (state.stream.draftImages.length === 0) {
+      setHidden(this.dom.composerImageList, true);
+      this.dom.composerImageList.replaceChildren();
+      this.lastRenderedDraftImagesRef = state.stream.draftImages;
+      this.lastRenderedImageAttachmentBusy = state.stream.imageAttachmentBusy;
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const image of state.stream.draftImages) {
+      fragment.append(this.createDraftImageChip(image, state.stream.imageAttachmentBusy));
+    }
+
+    setHidden(this.dom.composerImageList, false);
+    this.dom.composerImageList.replaceChildren(fragment);
+    this.lastRenderedDraftImagesRef = state.stream.draftImages;
+    this.lastRenderedImageAttachmentBusy = state.stream.imageAttachmentBusy;
   }
 
   private renderTurnStatus(): void {

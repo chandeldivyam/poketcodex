@@ -49,7 +49,7 @@ function extractUserInputText(content: unknown): string {
       continue;
     }
 
-    if (type === "image" || type === "localImage") {
+    if (type === "image" || type === "localImage" || type === "local_image") {
       lines.push("[image]");
     }
   }

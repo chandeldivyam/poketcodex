@@ -43,6 +43,7 @@ interface RequestOptions {
   method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   csrfToken?: string;
+  timeoutMs?: number;
 }
 
 async function parseJsonSafely(response: Response): Promise<unknown> {
@@ -74,17 +75,43 @@ export class ApiClient {
       headers["x-csrf-token"] = options.csrfToken;
     }
 
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
     const requestInit: RequestInit = {
       method: options.method ?? "GET",
       headers,
-      credentials: "include"
+      credentials: "include",
+      ...(controller ? { signal: controller.signal } : {})
     };
 
     if (options.body !== undefined) {
       requestInit.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(`${this.basePath}${path}`, requestInit);
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    if (controller && options.timeoutMs && options.timeoutMs > 0) {
+      timeoutHandle = setTimeout(() => {
+        controller.abort();
+      }, options.timeoutMs);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.basePath}${path}`, requestInit);
+    } catch (error: unknown) {
+      if (
+        options.timeoutMs &&
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+        throw new Error(`Request timed out after ${Math.ceil(options.timeoutMs / 1_000)}s`);
+      }
+
+      throw error;
+    } finally {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+    }
 
     const payload = await parseJsonSafely(response);
 
@@ -180,11 +207,19 @@ export class ApiClient {
     return response.result;
   }
 
-  async startTurn(workspaceId: string, csrfToken: string, params: Record<string, unknown>): Promise<unknown> {
+  async startTurn(
+    workspaceId: string,
+    csrfToken: string,
+    params: Record<string, unknown>,
+    options: {
+      timeoutMs?: number;
+    } = {}
+  ): Promise<unknown> {
     const response = await this.request<{ result: unknown }>(`/api/workspaces/${workspaceId}/turns/start`, {
       method: "POST",
       csrfToken,
-      body: params
+      body: params,
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {})
     });
 
     return response.result;
