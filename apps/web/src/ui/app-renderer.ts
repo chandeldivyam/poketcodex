@@ -209,15 +209,15 @@ function attachTranscriptCollapseToggle(
   options: {
     expandLabel: string;
     collapseLabel: string;
+    initialExpanded: boolean;
+    onExpandedChange(expanded: boolean): void;
   }
 ): void {
-  textElement.classList.add("transcript-text-collapsed");
-
   const toggleTextButton = document.createElement("button");
   toggleTextButton.type = "button";
   toggleTextButton.className = "transcript-toggle-text";
 
-  let expanded = false;
+  let expanded = options.initialExpanded;
   const updateExpandedState = (): void => {
     textElement.classList.toggle("transcript-text-collapsed", !expanded);
     container.classList.toggle("is-transcript-expanded", expanded);
@@ -226,6 +226,7 @@ function attachTranscriptCollapseToggle(
 
   toggleTextButton.addEventListener("click", () => {
     expanded = !expanded;
+    options.onExpandedChange(expanded);
     updateExpandedState();
   });
 
@@ -356,6 +357,8 @@ export class AppRenderer {
   private followTimeline = true;
   private followTranscript = true;
   private turnStatusTimer: number | undefined;
+  private readonly transcriptExpandedTextKeys = new Set<string>();
+  private readonly transcriptOpenDetailKeys = new Set<string>();
 
   constructor(dom: AppDomRefs, readState: () => Readonly<AppState>) {
     this.dom = dom;
@@ -744,7 +747,19 @@ export class AppRenderer {
     return "";
   }
 
-  private createTranscriptItem(item: TranscriptItem): HTMLLIElement {
+  private transcriptItemKey(item: TranscriptItem, threadId: string): string {
+    return `${threadId}::${item.runtimeItemId ?? item.id}`;
+  }
+
+  private transcriptTextKey(item: TranscriptItem, threadId: string): string {
+    return `${this.transcriptItemKey(item, threadId)}::text`;
+  }
+
+  private transcriptDetailKey(item: TranscriptItem, threadId: string, detailKey: string): string {
+    return `${this.transcriptItemKey(item, threadId)}::${detailKey}`;
+  }
+
+  private createTranscriptItem(item: TranscriptItem, threadId: string): HTMLLIElement {
     const lineItem = document.createElement("li");
     lineItem.className = `transcript-item transcript-${item.kind}`;
 
@@ -758,9 +773,18 @@ export class AppRenderer {
       lineItem.append(message);
 
       if (shouldCollapseTranscriptText(messageText)) {
+        const textKey = this.transcriptTextKey(item, threadId);
         attachTranscriptCollapseToggle(lineItem, message, {
           expandLabel: "Expand message",
-          collapseLabel: "Collapse message"
+          collapseLabel: "Collapse message",
+          initialExpanded: this.transcriptExpandedTextKeys.has(textKey),
+          onExpandedChange: (expanded) => {
+            if (expanded) {
+              this.transcriptExpandedTextKeys.add(textKey);
+            } else {
+              this.transcriptExpandedTextKeys.delete(textKey);
+            }
+          }
         });
       }
 
@@ -787,15 +811,26 @@ export class AppRenderer {
       lineItem.append(heading, summary);
 
       if (shouldCollapseTranscriptText(summaryText)) {
+        const textKey = this.transcriptTextKey(item, threadId);
         attachTranscriptCollapseToggle(lineItem, summary, {
           expandLabel: "Expand reasoning",
-          collapseLabel: "Collapse reasoning"
+          collapseLabel: "Collapse reasoning",
+          initialExpanded: this.transcriptExpandedTextKeys.has(textKey),
+          onExpandedChange: (expanded) => {
+            if (expanded) {
+              this.transcriptExpandedTextKeys.add(textKey);
+            } else {
+              this.transcriptExpandedTextKeys.delete(textKey);
+            }
+          }
         });
       }
 
       if (item.content.length > 0) {
         const details = document.createElement("details");
         details.className = "transcript-details";
+        const detailKey = this.transcriptDetailKey(item, threadId, "reasoning-details");
+        details.open = this.transcriptOpenDetailKeys.has(detailKey);
 
         const detailSummary = document.createElement("summary");
         detailSummary.textContent = "Reasoning details";
@@ -803,6 +838,14 @@ export class AppRenderer {
         const content = document.createElement("pre");
         content.className = "transcript-code transcript-details-content";
         content.textContent = item.content;
+
+        details.addEventListener("toggle", () => {
+          if (details.open) {
+            this.transcriptOpenDetailKeys.add(detailKey);
+          } else {
+            this.transcriptOpenDetailKeys.delete(detailKey);
+          }
+        });
 
         details.append(detailSummary, content);
         lineItem.append(details);
@@ -834,6 +877,8 @@ export class AppRenderer {
     if (item.output) {
       const details = document.createElement("details");
       details.className = "transcript-details";
+      const detailKey = this.transcriptDetailKey(item, threadId, "tool-output");
+      details.open = this.transcriptOpenDetailKeys.has(detailKey);
 
       const detailSummary = document.createElement("summary");
       detailSummary.textContent = "Tool output";
@@ -841,6 +886,15 @@ export class AppRenderer {
       const output = document.createElement("pre");
       output.className = "transcript-code transcript-details-content";
       output.textContent = item.output;
+
+      details.addEventListener("toggle", () => {
+        if (details.open) {
+          this.transcriptOpenDetailKeys.add(detailKey);
+        } else {
+          this.transcriptOpenDetailKeys.delete(detailKey);
+        }
+      });
+
       details.append(detailSummary, output);
       lineItem.append(details);
     }
@@ -857,6 +911,7 @@ export class AppRenderer {
 
   private renderTranscript(): void {
     const state = this.readState();
+    const selectedThreadId = state.thread.selectedThreadId;
     const transcript = this.selectedThreadTranscript(state);
     const placeholderMessage = this.transcriptLoadingMessage(transcript);
 
@@ -874,9 +929,16 @@ export class AppRenderer {
       return;
     }
 
+    if (!selectedThreadId) {
+      this.dom.transcriptList.replaceChildren(renderEmptyMessage("Select a thread to load history."));
+      this.followTranscript = true;
+      this.updateTranscriptJumpVisibility(0);
+      return;
+    }
+
     const fragment = document.createDocumentFragment();
     for (const item of transcript.items) {
-      fragment.append(this.createTranscriptItem(item));
+      fragment.append(this.createTranscriptItem(item, selectedThreadId));
     }
     this.dom.transcriptList.replaceChildren(fragment);
 
