@@ -56,6 +56,13 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           <h1>PocketCodex</h1>
           <p class="subhead">Mobile Codex control plane</p>
         </div>
+        <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="5" x2="17" y2="5"/>
+            <line x1="3" y1="10" x2="17" y2="10"/>
+            <line x1="3" y1="15" x2="17" y2="15"/>
+          </svg>
+        </button>
         <div class="status-row">
           <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
           <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh</button>
@@ -63,6 +70,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           <button class="button-secondary" type="button" data-role="logout">Logout</button>
         </div>
       </header>
+
+      <div class="sidebar-overlay" data-role="sidebar-overlay"></div>
 
       <section class="error-banner is-hidden" data-role="error-banner">
         <span data-role="error-message"></span>
@@ -82,7 +91,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
         </form>
       </section>
 
-      <section class="panel-grid is-hidden" data-role="app-panels">
+      <section class="app-body is-hidden" data-role="app-panels">
         <aside class="nav-column">
           <section class="panel workspace-panel">
             <h2>Workspaces</h2>
@@ -113,7 +122,8 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           </section>
         </aside>
 
-        <section class="panel conversation-panel event-panel">
+        <section class="main-column">
+          <section class="conversation-panel">
           <div class="conversation-header">
             <h2 data-role="conversation-title">Conversation</h2>
             <div class="conversation-context">
@@ -170,10 +180,36 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
               </ol>
             </div>
           </details>
+          </section>
         </section>
       </section>
     </main>
   `;
+
+  // Sidebar drawer toggle logic (mobile)
+  const sidebarToggle = requireElement<HTMLButtonElement>(root, "[data-role='sidebar-toggle']");
+  const sidebarOverlay = requireElement<HTMLElement>(root, "[data-role='sidebar-overlay']");
+  const navColumn = requireElement<HTMLElement>(root, ".nav-column");
+
+  const closeSidebar = () => {
+    navColumn.classList.remove("is-open");
+    sidebarOverlay.classList.remove("is-open");
+  };
+
+  sidebarToggle.addEventListener("click", () => {
+    const isOpen = navColumn.classList.toggle("is-open");
+    sidebarOverlay.classList.toggle("is-open", isOpen);
+  });
+
+  sidebarOverlay.addEventListener("click", closeSidebar);
+
+  // Auto-close drawer when a workspace or thread is selected on mobile
+  navColumn.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest(".workspace-item") || target.closest(".thread-item")) {
+      closeSidebar();
+    }
+  });
 
   return {
     loginPanel: requireElement<HTMLElement>(root, "[data-role='login-panel']"),
