@@ -42,6 +42,8 @@ const TIMELINE_DETAILS_SUMMARY_LABELS: Record<TimelineEventCategory, string> = {
 
 const TIMELINE_MESSAGE_COLLAPSE_LENGTH = 220;
 const TIMELINE_MESSAGE_COLLAPSE_LINES = 4;
+const TRANSCRIPT_TEXT_COLLAPSE_LENGTH = 420;
+const TRANSCRIPT_TEXT_COLLAPSE_LINES = 9;
 
 interface TurnStatusPresentation {
   label: string;
@@ -182,9 +184,53 @@ function renderEmptyMessage(message: string): HTMLParagraphElement {
   return paragraph;
 }
 
+function truncateInlineText(value: string, maxLength = 90): string {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
 function shouldCollapseTimelineMessage(message: string): boolean {
   const lineCount = message.split(/\r?\n/).length;
   return message.length >= TIMELINE_MESSAGE_COLLAPSE_LENGTH || lineCount >= TIMELINE_MESSAGE_COLLAPSE_LINES;
+}
+
+function shouldCollapseTranscriptText(text: string): boolean {
+  const lineCount = text.split(/\r?\n/).length;
+  return text.length >= TRANSCRIPT_TEXT_COLLAPSE_LENGTH || lineCount >= TRANSCRIPT_TEXT_COLLAPSE_LINES;
+}
+
+function attachTranscriptCollapseToggle(
+  container: HTMLLIElement,
+  textElement: HTMLElement,
+  options: {
+    expandLabel: string;
+    collapseLabel: string;
+  }
+): void {
+  textElement.classList.add("transcript-text-collapsed");
+
+  const toggleTextButton = document.createElement("button");
+  toggleTextButton.type = "button";
+  toggleTextButton.className = "transcript-toggle-text";
+
+  let expanded = false;
+  const updateExpandedState = (): void => {
+    textElement.classList.toggle("transcript-text-collapsed", !expanded);
+    container.classList.toggle("is-transcript-expanded", expanded);
+    toggleTextButton.textContent = expanded ? options.collapseLabel : options.expandLabel;
+  };
+
+  toggleTextButton.addEventListener("click", () => {
+    expanded = !expanded;
+    updateExpandedState();
+  });
+
+  updateExpandedState();
+  container.append(toggleTextButton);
 }
 
 function createTimelineItem(entry: TimelineEventEntry): HTMLLIElement {
@@ -316,7 +362,13 @@ export class AppRenderer {
     this.readState = readState;
 
     this.dom.transcriptStream.addEventListener("scroll", () => {
-      this.followTranscript = this.isNearTranscriptBottom();
+      this.handleTranscriptScroll();
+    });
+
+    this.dom.transcriptJumpLatestButton.addEventListener("click", () => {
+      this.followTranscript = true;
+      this.scrollTranscriptToLatest();
+      this.updateTranscriptJumpVisibility(this.selectedThreadTranscript(this.readState())?.items.length ?? 0);
     });
 
     this.dom.eventStream.addEventListener("scroll", () => {
@@ -511,7 +563,9 @@ export class AppRenderer {
       const isSelected = thread.threadId === state.thread.selectedThreadId;
       const isRunning = state.thread.runningByThreadId[thread.threadId] === true;
       const hasUnread = state.thread.unreadByThreadId[thread.threadId] === true;
-      const transcriptHydration = state.thread.transcriptsByThreadId[thread.threadId]?.hydration ?? "idle";
+      const transcriptState = state.thread.transcriptsByThreadId[thread.threadId];
+      const transcriptHydration = transcriptState?.hydration ?? "idle";
+      const previewText = this.threadPreviewText(transcriptState) ?? thread.threadId;
       const button = document.createElement("button");
       button.type = "button";
       button.className = `thread-item ${isSelected ? "is-selected" : ""}`.trim();
@@ -559,6 +613,10 @@ export class AppRenderer {
 
       titleRow.append(title, badgeStack);
 
+      const preview = document.createElement("span");
+      preview.className = "list-item-preview";
+      preview.textContent = previewText;
+
       const threadId = document.createElement("span");
       threadId.className = "list-item-id";
       threadId.textContent = thread.threadId;
@@ -568,12 +626,65 @@ export class AppRenderer {
       const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
       metadata.textContent = lastSeenLabel ? `Last seen ${lastSeenLabel}` : "No recent activity";
 
-      button.append(titleRow, threadId, metadata);
+      button.append(titleRow, preview, threadId, metadata);
 
       fragment.append(button);
     }
 
     this.dom.threadList.replaceChildren(fragment);
+  }
+
+  private threadPreviewText(transcriptState: ThreadTranscriptState | undefined): string | null {
+    if (!transcriptState) {
+      return null;
+    }
+
+    if (transcriptState.hydration === "loading") {
+      return "Loading history...";
+    }
+
+    if (transcriptState.hydration === "error") {
+      return "History unavailable";
+    }
+
+    if (transcriptState.items.length === 0) {
+      return "No messages yet";
+    }
+
+    for (let index = transcriptState.items.length - 1; index >= 0; index -= 1) {
+      const item = transcriptState.items[index];
+      if (!item) {
+        continue;
+      }
+
+      if (item.kind === "message") {
+        const text = item.text.trim();
+        if (text.length === 0) {
+          continue;
+        }
+
+        const prefix = item.role === "user" ? "You: " : "Codex: ";
+        return `${prefix}${truncateInlineText(text, 95)}`;
+      }
+
+      if (item.kind === "reasoning") {
+        const text = item.summary.trim() || item.content.trim();
+        if (text.length === 0) {
+          continue;
+        }
+
+        return `Reasoning: ${truncateInlineText(text, 95)}`;
+      }
+
+      const text = `${item.title}${item.detail ? ` ${item.detail}` : ""}`.trim();
+      if (text.length === 0) {
+        continue;
+      }
+
+      return `Tool: ${truncateInlineText(text, 95)}`;
+    }
+
+    return "No messages yet";
   }
 
   private renderContextLabels(): void {
@@ -640,8 +751,16 @@ export class AppRenderer {
 
       const message = document.createElement("p");
       message.className = "transcript-message";
-      message.textContent = item.text;
+      const messageText = item.text.length > 0 ? item.text : item.streaming ? "..." : "[empty message]";
+      message.textContent = messageText;
       lineItem.append(message);
+
+      if (shouldCollapseTranscriptText(messageText)) {
+        attachTranscriptCollapseToggle(lineItem, message, {
+          expandLabel: "Expand message",
+          collapseLabel: "Collapse message"
+        });
+      }
 
       if (item.streaming) {
         const streaming = document.createElement("span");
@@ -660,15 +779,31 @@ export class AppRenderer {
 
       const summary = document.createElement("p");
       summary.className = "transcript-message transcript-reasoning-summary";
-      summary.textContent = item.summary.length > 0 ? item.summary : "Working...";
+      const summaryText = item.summary.length > 0 ? item.summary : "Working...";
+      summary.textContent = summaryText;
 
       lineItem.append(heading, summary);
 
+      if (shouldCollapseTranscriptText(summaryText)) {
+        attachTranscriptCollapseToggle(lineItem, summary, {
+          expandLabel: "Expand reasoning",
+          collapseLabel: "Collapse reasoning"
+        });
+      }
+
       if (item.content.length > 0) {
+        const details = document.createElement("details");
+        details.className = "transcript-details";
+
+        const detailSummary = document.createElement("summary");
+        detailSummary.textContent = "Reasoning details";
+
         const content = document.createElement("pre");
-        content.className = "transcript-code";
+        content.className = "transcript-code transcript-details-content";
         content.textContent = item.content;
-        lineItem.append(content);
+
+        details.append(detailSummary, content);
+        lineItem.append(details);
       }
 
       if (item.streaming) {
@@ -695,10 +830,17 @@ export class AppRenderer {
     }
 
     if (item.output) {
+      const details = document.createElement("details");
+      details.className = "transcript-details";
+
+      const detailSummary = document.createElement("summary");
+      detailSummary.textContent = "Tool output";
+
       const output = document.createElement("pre");
-      output.className = "transcript-code";
+      output.className = "transcript-code transcript-details-content";
       output.textContent = item.output;
-      lineItem.append(output);
+      details.append(detailSummary, output);
+      lineItem.append(details);
     }
 
     if (item.streaming) {
@@ -719,12 +861,14 @@ export class AppRenderer {
     if (placeholderMessage) {
       this.dom.transcriptList.replaceChildren(renderEmptyMessage(placeholderMessage));
       this.followTranscript = true;
+      this.updateTranscriptJumpVisibility(0);
       return;
     }
 
     if (!transcript) {
       this.dom.transcriptList.replaceChildren(renderEmptyMessage("Select a thread to load history."));
       this.followTranscript = true;
+      this.updateTranscriptJumpVisibility(0);
       return;
     }
 
@@ -737,11 +881,22 @@ export class AppRenderer {
     if (this.followTranscript) {
       this.scrollTranscriptToLatest();
     }
+
+    this.updateTranscriptJumpVisibility(transcript.items.length);
   }
 
   private isNearTranscriptBottom(): boolean {
     const { scrollHeight, scrollTop, clientHeight } = this.dom.transcriptStream;
     return scrollHeight - (scrollTop + clientHeight) <= TRANSCRIPT_BOTTOM_THRESHOLD_PX;
+  }
+
+  private handleTranscriptScroll(): void {
+    this.followTranscript = this.isNearTranscriptBottom();
+    this.updateTranscriptJumpVisibility(this.selectedThreadTranscript(this.readState())?.items.length ?? 0);
+  }
+
+  private updateTranscriptJumpVisibility(itemCount: number): void {
+    setHidden(this.dom.transcriptJumpLatestButton, itemCount === 0 || this.followTranscript);
   }
 
   private scrollTranscriptToLatest(): void {

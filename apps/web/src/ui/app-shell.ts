@@ -29,6 +29,7 @@ export interface AppDomRefs {
   interruptTurnButton: HTMLButtonElement;
   transcriptStream: HTMLElement;
   transcriptList: HTMLOListElement;
+  transcriptJumpLatestButton: HTMLButtonElement;
   eventStream: HTMLElement;
   eventList: HTMLOListElement;
   toggleStatusEventsButton: HTMLButtonElement;
@@ -135,6 +136,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
           <div class="transcript-toolbar">
             <span class="event-toolbar-label">Conversation</span>
+            <div class="event-toolbar-actions">
+              <button class="button-secondary is-hidden" type="button" data-role="transcript-jump-latest">
+                Jump to latest message
+              </button>
+            </div>
           </div>
 
           <div class="transcript-stream" data-role="transcript-stream">
@@ -193,6 +199,7 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     interruptTurnButton: requireElement<HTMLButtonElement>(root, "[data-role='interrupt-turn']"),
     transcriptStream: requireElement<HTMLElement>(root, "[data-role='transcript-stream']"),
     transcriptList: requireElement<HTMLOListElement>(root, "[data-role='transcript-list']"),
+    transcriptJumpLatestButton: requireElement<HTMLButtonElement>(root, "[data-role='transcript-jump-latest']"),
     eventStream: requireElement<HTMLElement>(root, "[data-role='event-stream']"),
     eventList: requireElement<HTMLOListElement>(root, "[data-role='event-list']"),
     toggleStatusEventsButton: requireElement<HTMLButtonElement>(root, "[data-role='toggle-status-events']"),
