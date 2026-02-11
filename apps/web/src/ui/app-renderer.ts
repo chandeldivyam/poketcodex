@@ -467,7 +467,10 @@ export class AppRenderer {
     const workspaceActionsDisabled = selectWorkspaceActionsDisabled(state);
     const threadActionsDisabled = selectThreadActionsDisabled(state);
     const turnContextMissing = !state.session.authenticated || !state.workspace.selectedWorkspaceId;
-    const turnExecutionActive =
+    const turnRequestInFlight =
+      state.stream.turnPhase === "submitting" ||
+      state.stream.turnPhase === "interrupting";
+    const hasInterruptibleTurn =
       state.stream.turnPhase === "submitting" ||
       state.stream.turnPhase === "running" ||
       state.stream.turnPhase === "interrupting";
@@ -482,11 +485,11 @@ export class AppRenderer {
     this.dom.reconnectEventsButton.disabled = threadActionsDisabled;
     this.dom.refreshThreadsButton.disabled = threadActionsDisabled;
     this.dom.startThreadButton.disabled = threadActionsDisabled;
-    this.dom.startTurnButton.disabled = threadActionsDisabled || turnExecutionActive;
+    this.dom.startTurnButton.disabled = threadActionsDisabled || turnRequestInFlight;
     this.dom.interruptTurnButton.disabled =
       threadActionsDisabled ||
       turnContextMissing ||
-      !turnExecutionActive ||
+      !hasInterruptibleTurn ||
       state.stream.turnPhase === "interrupting";
   }
 

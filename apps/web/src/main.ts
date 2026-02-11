@@ -1563,8 +1563,8 @@ async function handleTurnSubmit(event: Event): Promise<void> {
 
   const normalizedPrompt = prompt.trim();
   const existingTurnPhase = store.getState().stream.turnPhase;
-  if (existingTurnPhase === "submitting" || existingTurnPhase === "running" || existingTurnPhase === "interrupting") {
-    setError("A turn is already active. Interrupt or wait for completion.");
+  if (existingTurnPhase === "submitting" || existingTurnPhase === "interrupting") {
+    setError("A turn request is already in progress. Wait for completion and retry.");
     return;
   }
 
