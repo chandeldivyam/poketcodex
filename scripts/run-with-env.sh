@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${POCKETCODEX_ENV_FILE:-${ROOT_DIR}/.env}"
+if [[ "${ENV_FILE}" != /* ]]; then
+  ENV_FILE="${ROOT_DIR}/${ENV_FILE}"
+fi
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "[poketcodex] Missing env file: ${ENV_FILE}" >&2
