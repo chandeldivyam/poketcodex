@@ -415,12 +415,9 @@ form {
 /* ── List containers (sidebar items) ── */
 .list-container {
   margin-top: var(--space-2);
-  overflow-y: auto;
-  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding-right: 0.1rem;
 }
 
 .workspace-item,
