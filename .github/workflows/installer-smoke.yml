@@ -1,0 +1,60 @@
+name: installer-smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer-dryrun:
+    name: Installer Dry Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.7.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build local installer assets
+        run: bash ./scripts/build-installer-assets.sh --out-dir=dist/release --ref=HEAD
+
+      - name: Run installer from local assets
+        env:
+          INSTALL_ROOT: ${{ runner.temp }}/poketcodex-home
+          BIN_DIR: ${{ runner.temp }}/poketcodex-bin
+        run: |
+          set -euo pipefail
+          bash ./scripts/install.sh \
+            --source-tarball=dist/release/poketcodex-source.tar.gz \
+            --checksums-file=dist/release/checksums.txt \
+            --install-root="${INSTALL_ROOT}" \
+            --bin-dir="${BIN_DIR}" \
+            --workspace-root="$HOME" \
+            --skip-start \
+            --yes \
+            --skip-codex-check \
+            --skip-tailscale-check
+
+      - name: Verify launcher and env bootstrap
+        env:
+          INSTALL_ROOT: ${{ runner.temp }}/poketcodex-home
+          BIN_DIR: ${{ runner.temp }}/poketcodex-bin
+        run: |
+          set -euo pipefail
+          test -x "${BIN_DIR}/poketcodex"
+          test -f "${INSTALL_ROOT}/current/.env"
+          "${BIN_DIR}/poketcodex" status

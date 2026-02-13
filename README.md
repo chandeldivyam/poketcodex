@@ -6,6 +6,8 @@ Phase-0 monorepo scaffold for PocketCodex.
 
 - Node.js 20+
 - pnpm 10+
+- Codex CLI available on `PATH` (`codex`)
+- Tailscale CLI available on `PATH` (`tailscale`)
 
 ## Workspace Layout
 
@@ -18,6 +20,13 @@ Phase-0 monorepo scaffold for PocketCodex.
 ## Commands
 
 - `pnpm install`
+- `pnpm poketcodex -- help` (local CLI wrapper)
+- `pnpm poketcodex -- init --yes`
+- `pnpm poketcodex -- up`
+- `pnpm poketcodex -- down`
+- `pnpm poketcodex -- status`
+- `pnpm poketcodex -- logs`
+- `pnpm poketcodex -- doctor`
 - `pnpm lint`
 - `pnpm typecheck`
 - `pnpm test`
@@ -30,6 +39,32 @@ Phase-0 monorepo scaffold for PocketCodex.
 - `pnpm longrun:logs`
 - `pnpm longrun:down`
 - `pnpm audit --audit-level=high`
+
+## One-Command Installer (`curl | sh`)
+
+Installer assets are published via GitHub Releases.
+
+```bash
+curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+  https://github.com/chandeldivyam/poketcodex/releases/latest/download/install.sh | bash
+```
+
+Current implementation uses a source payload, so `node` and `pnpm` must already be installed.
+
+Helpful options:
+
+```bash
+bash ./scripts/install.sh --help
+bash ./scripts/install.sh --version=v0.1.0
+bash ./scripts/install.sh --skip-start --yes
+```
+
+Build local release assets:
+
+```bash
+pnpm installer:build-assets
+pnpm installer:build-assets -- --ref=WORKTREE
+```
 
 ## Environment
 

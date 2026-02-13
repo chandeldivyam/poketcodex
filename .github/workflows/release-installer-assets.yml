@@ -1,0 +1,58 @@
+name: release-installer-assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to upload installer assets to (for manual reruns)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish-installer-assets:
+    name: Publish Installer Assets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve target tag
+        id: resolve-tag
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ inputs.release_tag }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build installer assets
+        run: bash ./scripts/build-installer-assets.sh --out-dir=dist/release --ref="${{ steps.resolve-tag.outputs.tag }}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.resolve-tag.outputs.tag }}" \
+            dist/release/install.sh \
+            dist/release/poketcodex-source.tar.gz \
+            dist/release/checksums.txt \
+            --clobber
+
+      - name: Generate artifact attestations
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/release/install.sh
+            dist/release/poketcodex-source.tar.gz
+            dist/release/checksums.txt
