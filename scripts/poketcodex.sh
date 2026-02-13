@@ -38,6 +38,20 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+node_major_version() {
+  node -e "process.stdout.write(String(Number(process.versions.node.split('.')[0])))"
+}
+
+require_min_node_version() {
+  local min_major="$1"
+  local current_major
+  current_major="$(node_major_version)"
+
+  if [[ "${current_major}" -lt "${min_major}" ]]; then
+    die "Node.js ${min_major}+ is required (found $(node -v))"
+  fi
+}
+
 resolve_tailscale_cmd() {
   local candidate
 
@@ -155,6 +169,8 @@ load_env_file() {
 }
 
 ensure_repo_prerequisites() {
+  command_exists node || die "node is required"
+  require_min_node_version 22
   command_exists pnpm || die "pnpm is required"
   command_exists bash || die "bash is required"
 }
@@ -345,6 +361,16 @@ run_doctor() {
     failures=$((failures + 1))
   fi
   check_cmd node
+  if command_exists node; then
+    local current_node_major
+    current_node_major="$(node_major_version)"
+    if [[ "${current_node_major}" -ge 22 ]]; then
+      log "ok: node runtime compatible ($(node -v))"
+    else
+      warn "node version incompatible ($(node -v)); require Node.js 22+"
+      failures=$((failures + 1))
+    fi
+  fi
   check_cmd pnpm
   check_cmd curl
   check_cmd tar

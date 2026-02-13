@@ -4,7 +4,7 @@ Phase-0 monorepo scaffold for PocketCodex.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - pnpm 10+
 - Codex CLI available on `PATH` (`codex`)
 - Tailscale CLI available on `PATH` (`tailscale`)
