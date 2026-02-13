@@ -21,6 +21,7 @@ Phase-0 monorepo scaffold for PocketCodex.
 
 - `pnpm install`
 - `pnpm poketcodex -- help` (local CLI wrapper)
+- `pnpm poketcodex -- --version`
 - `pnpm poketcodex -- init --yes`
 - `pnpm poketcodex -- up`
 - `pnpm poketcodex -- down`

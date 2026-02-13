@@ -7,6 +7,7 @@ DEFAULT_ENV_FILE="${ROOT_DIR}/.env"
 usage() {
   cat <<'USAGE'
 Usage:
+  poketcodex --version
   poketcodex init [--env-file=<path>] [--workspace-root=<path>] [--auth-password=<value>] [--force] [--yes|--non-interactive]
   poketcodex up [--skip-install] [--share-tailscale]
   poketcodex down
@@ -32,6 +33,21 @@ warn() {
 die() {
   warn "$*"
   exit 1
+}
+
+read_cli_version() {
+  local package_json="${ROOT_DIR}/package.json"
+  local version=""
+
+  if [[ -f "${package_json}" ]]; then
+    version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "${package_json}" | head -n 1)"
+  fi
+
+  if [[ -z "${version}" ]]; then
+    version="unknown"
+  fi
+
+  printf '%s\n' "${version}"
 }
 
 command_exists() {
@@ -436,6 +452,9 @@ main() {
   fi
 
   case "${command}" in
+    version|-v|--version)
+      read_cli_version
+      ;;
     init)
       run_init "$@"
       ;;
