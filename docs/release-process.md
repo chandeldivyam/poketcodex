@@ -40,6 +40,7 @@ Use conventional commits in PR branch history (or squash commit title) for predi
 - Treat Release PR merge as the "ship" action.
 - Keep `release-installer-assets.yml` as automatic post-release publishing.
 - Keep manual `workflow_dispatch` on `release-installer-assets` only as fallback/recovery.
+- Keep feature work flowing into `main`; Release Please continuously refreshes the same Release PR until you merge it.
 
 ## First-run bootstrap note
 

@@ -2,6 +2,9 @@
   "name": "poketcodex",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "packageManager": "pnpm@10.7.1",
   "scripts": {
     "dev": "bash ./scripts/run-with-env.sh pnpm --parallel --filter @poketcodex/backend --filter @poketcodex/web dev",

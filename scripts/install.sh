@@ -71,6 +71,20 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+node_major_version() {
+  node -e "process.stdout.write(String(Number(process.versions.node.split('.')[0])))"
+}
+
+require_min_node_version() {
+  local min_major="$1"
+  local current_major
+  current_major="$(node_major_version)"
+
+  if [[ "${current_major}" -lt "${min_major}" ]]; then
+    die "Node.js ${min_major}+ is required (found $(node -v))"
+  fi
+}
+
 resolve_tailscale_cmd() {
   local candidate
 
@@ -203,6 +217,7 @@ preflight() {
 
   if [[ "${SKIP_NODE_CHECK}" -eq 0 ]]; then
     require_cmd node
+    require_min_node_version 22
   fi
 
   if [[ "${SKIP_PNPM_CHECK}" -eq 0 ]]; then
