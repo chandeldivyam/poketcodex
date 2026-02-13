@@ -74,6 +74,7 @@ Ship a dedicated CLI package (example name: `@poketcodex/cli`) with:
 - `poketcodex status`
 - `poketcodex logs`
 - `poketcodex doctor`
+- `poketcodex --version`
 - `poketcodex share tailscale`
 - `poketcodex unshare tailscale`
 
