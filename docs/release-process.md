@@ -24,6 +24,19 @@ This repository uses a Release PR bot (Release Please) to automate versioning an
    - `poketcodex-source.tar.gz`
    - `checksums.txt`
 
+## Required GitHub settings
+
+If Release Please cannot create a PR, configure one of these:
+
+1. Repository setting for `GITHUB_TOKEN` (preferred):
+   - Settings -> Actions -> General -> Workflow permissions
+   - Set `Read and write permissions`
+   - Enable `Allow GitHub Actions to create and approve pull requests`
+2. Personal access token fallback:
+   - Create a PAT with `repo` scope
+   - Add repository secret `RELEASE_PLEASE_TOKEN`
+   - Workflow already prefers `RELEASE_PLEASE_TOKEN` when present
+
 ## Commit message conventions
 
 Release Please infers version bumps from conventional commit types:
