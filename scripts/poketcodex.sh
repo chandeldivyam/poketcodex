@@ -269,9 +269,9 @@ ENVVARS
   log "created env file: ${env_file}"
 
   if [[ "${generated_password}" -eq 1 ]]; then
-    log "generated AUTH_PASSWORD: ${auth_password}"
+    log "generated AUTH_PASSWORD and stored it in ${env_file}"
   else
-    log "AUTH_PASSWORD set from provided input"
+    log "AUTH_PASSWORD set from provided input and stored in ${env_file}"
   fi
 }
 
