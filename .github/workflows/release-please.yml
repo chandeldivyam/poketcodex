@@ -44,4 +44,7 @@ jobs:
           fi
 
           echo "Dispatching release-installer-assets for tag: ${TAG_NAME}"
-          gh workflow run release-installer-assets.yml --ref main -f release_tag="${TAG_NAME}"
+          gh workflow run release-installer-assets.yml \
+            -R "${GITHUB_REPOSITORY}" \
+            --ref main \
+            -f release_tag="${TAG_NAME}"
