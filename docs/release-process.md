@@ -19,10 +19,13 @@ This repository uses a Release PR bot (Release Please) to automate versioning an
    - a new semantic version tag (for example `v0.2.0`)
    - a GitHub Release for that tag
    - changelog updates
-6. The existing `.github/workflows/release-installer-assets.yml` runs on `release.published` and uploads:
+6. `release-please.yml` dispatches `.github/workflows/release-installer-assets.yml` for the created tag.
+7. `release-installer-assets.yml` uploads:
    - `install.sh`
    - `poketcodex-source.tar.gz`
    - `checksums.txt`
+
+Note: current tag format from Release Please is `poketcodex-vX.Y.Z` (for example `poketcodex-v0.2.0`).
 
 ## Required GitHub settings
 
