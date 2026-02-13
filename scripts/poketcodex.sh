@@ -38,6 +38,27 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+resolve_tailscale_cmd() {
+  local candidate
+
+  if candidate="$(command -v tailscale 2>/dev/null)"; then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+
+  # macOS app bundle fallback (GUI app installed, CLI not on PATH).
+  for candidate in \
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale" \
+    "/Applications/Tailscale.app/Contents/MacOS/tailscale"; do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 resolve_env_file() {
   local env_file="${POCKETCODEX_ENV_FILE:-${DEFAULT_ENV_FILE}}"
   if [[ "${env_file}" != /* ]]; then
@@ -263,14 +284,20 @@ run_doctor() {
   }
 
   check_cmd codex
-  check_cmd tailscale
+  local tailscale_cmd=""
+  if tailscale_cmd="$(resolve_tailscale_cmd)"; then
+    log "ok: tailscale found (${tailscale_cmd})"
+  else
+    warn "missing: tailscale"
+    failures=$((failures + 1))
+  fi
   check_cmd node
   check_cmd pnpm
   check_cmd curl
   check_cmd tar
 
-  if command_exists tailscale; then
-    if tailscale status >/dev/null 2>&1; then
+  if [[ -n "${tailscale_cmd}" ]]; then
+    if "${tailscale_cmd}" status >/dev/null 2>&1; then
       log "ok: tailscale connected"
     else
       warn "tailscale installed but not connected; run: tailscale up"
@@ -299,18 +326,19 @@ run_share_tailscale() {
   env_file="$(resolve_env_file)"
   load_env_file "${env_file}"
   preview_port="${WEB_PREVIEW_PORT:-4173}"
+  local tailscale_cmd
+  tailscale_cmd="$(resolve_tailscale_cmd)" || die "tailscale is required"
+  "${tailscale_cmd}" status >/dev/null 2>&1 || die "tailscale is installed but not connected; run: tailscale up"
 
-  command_exists tailscale || die "tailscale is required"
-  tailscale status >/dev/null 2>&1 || die "tailscale is installed but not connected; run: tailscale up"
-
-  tailscale serve --bg --http=443 "http://127.0.0.1:${preview_port}"
+  "${tailscale_cmd}" serve --bg --http=443 "http://127.0.0.1:${preview_port}"
   log "tailscale serve configured for http://127.0.0.1:${preview_port}"
   log "check URL using: tailscale serve status"
 }
 
 run_unshare_tailscale() {
-  command_exists tailscale || die "tailscale is required"
-  tailscale serve --http=443 off
+  local tailscale_cmd
+  tailscale_cmd="$(resolve_tailscale_cmd)" || die "tailscale is required"
+  "${tailscale_cmd}" serve --http=443 off
   log "tailscale serve disabled for port 443"
 }
 
