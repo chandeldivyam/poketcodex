@@ -383,8 +383,8 @@ run_share_tailscale() {
   tailscale_cmd="$(resolve_tailscale_cmd)" || die "tailscale is required"
   "${tailscale_cmd}" status >/dev/null 2>&1 || die "tailscale is installed but not connected; run: tailscale up"
 
-  "${tailscale_cmd}" serve --bg --http=443 "http://127.0.0.1:${preview_port}"
-  log "tailscale serve configured for http://127.0.0.1:${preview_port}"
+  "${tailscale_cmd}" serve --bg --https=443 "http://127.0.0.1:${preview_port}"
+  log "tailscale serve configured (HTTPS) for http://127.0.0.1:${preview_port}"
 
   local dns_name
   if dns_name="$(tailscale_dns_name "${tailscale_cmd}")"; then
@@ -396,8 +396,8 @@ run_share_tailscale() {
 run_unshare_tailscale() {
   local tailscale_cmd
   tailscale_cmd="$(resolve_tailscale_cmd)" || die "tailscale is required"
-  "${tailscale_cmd}" serve --http=443 off
-  log "tailscale serve disabled for port 443"
+  "${tailscale_cmd}" serve --https=443 off
+  log "tailscale HTTPS serve disabled for port 443"
 }
 
 main() {
