@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.2.0...poketcodex-v0.3.0) (2026-02-13)
+
+
+### Features
+
+* stop printing generated AUTH_PASSWORD in init output ([681ffe7](https://github.com/chandeldivyam/poketcodex/commit/681ffe78db9a296f8a2fc8e0da7e53531f8f9b60))
+* stop printing generated AUTH_PASSWORD in init output ([c084d01](https://github.com/chandeldivyam/poketcodex/commit/c084d01ced7221559ceb5cdbee02c8f7dd26e342))
+
 ## [0.2.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.1.0...poketcodex-v0.2.0) (2026-02-13)
 
 
