@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.3.0...poketcodex-v0.4.0) (2026-02-13)
+
+
+### Features
+
+* add poketcodex --version command ([1b7ddf8](https://github.com/chandeldivyam/poketcodex/commit/1b7ddf8a8ce3081e86c87bbb3a67ab7d46c6f546))
+* add poketcodex --version command ([7db91ee](https://github.com/chandeldivyam/poketcodex/commit/7db91eef4b32e4c1727489be6c81fe0175969f38))
+
+
+### Bug Fixes
+
+* dispatch asset workflow with explicit repo context ([33ff749](https://github.com/chandeldivyam/poketcodex/commit/33ff749eb871d2e124f039e372e5c19529daa766))
+* dispatch asset workflow with explicit repo context ([4f43134](https://github.com/chandeldivyam/poketcodex/commit/4f43134918f04a887ee53bb69349e53a05ede481))
+
 ## [0.3.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.2.0...poketcodex-v0.3.0) (2026-02-13)
 
 
