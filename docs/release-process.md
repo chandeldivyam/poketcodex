@@ -19,10 +19,26 @@ This repository uses a Release PR bot (Release Please) to automate versioning an
    - a new semantic version tag (for example `v0.2.0`)
    - a GitHub Release for that tag
    - changelog updates
-6. The existing `.github/workflows/release-installer-assets.yml` runs on `release.published` and uploads:
+6. `release-please.yml` dispatches `.github/workflows/release-installer-assets.yml` for the created tag.
+7. `release-installer-assets.yml` uploads:
    - `install.sh`
    - `poketcodex-source.tar.gz`
    - `checksums.txt`
+
+Note: current tag format from Release Please is `poketcodex-vX.Y.Z` (for example `poketcodex-v0.2.0`).
+
+## Required GitHub settings
+
+If Release Please cannot create a PR, configure one of these:
+
+1. Repository setting for `GITHUB_TOKEN` (preferred):
+   - Settings -> Actions -> General -> Workflow permissions
+   - Set `Read and write permissions`
+   - Enable `Allow GitHub Actions to create and approve pull requests`
+2. Personal access token fallback:
+   - Create a PAT with `repo` scope
+   - Add repository secret `RELEASE_PLEASE_TOKEN`
+   - Workflow already prefers `RELEASE_PLEASE_TOKEN` when present
 
 ## Commit message conventions
 
