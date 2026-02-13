@@ -402,6 +402,17 @@ form {
   box-shadow: var(--shadow-up);
 }
 
+.composer-form.is-drag-over {
+  border-color: #8ab6f6;
+  box-shadow:
+    0 0 0 2px rgba(92, 153, 255, 0.22),
+    var(--shadow-up);
+}
+
+.composer-form.is-drag-disabled {
+  opacity: 0.9;
+}
+
 .composer-form label {
   font-size: 0;
   overflow: hidden;
