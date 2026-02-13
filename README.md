@@ -78,6 +78,17 @@ pnpm installer:build-assets
 pnpm installer:build-assets -- --ref=WORKTREE
 ```
 
+## Automated Version Releases
+
+This repo now uses Release Please for release management:
+
+- Merging feature PRs into `main` does **not** immediately publish a new version.
+- A Release PR is automatically created/updated from `main`.
+- Merging the Release PR creates a semantic version tag + GitHub Release.
+- `release-installer-assets` then publishes installer assets for that release tag.
+
+See `docs/release-process.md` for full operational flow.
+
 ## Environment
 
 The backend validates configuration at startup and exits on invalid values.
