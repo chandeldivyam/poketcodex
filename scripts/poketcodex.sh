@@ -8,7 +8,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   poketcodex init [--env-file=<path>] [--workspace-root=<path>] [--auth-password=<value>] [--force] [--yes|--non-interactive]
-  poketcodex up [--skip-install]
+  poketcodex up [--skip-install] [--share-tailscale]
   poketcodex down
   poketcodex status
   poketcodex logs
@@ -57,6 +57,35 @@ resolve_tailscale_cmd() {
   done
 
   return 1
+}
+
+tailscale_dns_name() {
+  local tailscale_cmd="$1"
+
+  command_exists node || return 1
+
+  local status_json
+  status_json="$("${tailscale_cmd}" status --json 2>/dev/null || true)"
+  [[ -n "${status_json}" ]] || return 1
+
+  printf '%s' "${status_json}" | node -e '
+let input = "";
+process.stdin.on("data", (chunk) => {
+  input += chunk;
+});
+process.stdin.on("end", () => {
+  try {
+    const parsed = JSON.parse(input);
+    const dns = String(parsed?.Self?.DNSName ?? "").replace(/\.$/, "");
+    if (!dns) {
+      process.exit(1);
+    }
+    process.stdout.write(dns);
+  } catch {
+    process.exit(1);
+  }
+});
+' || return 1
 }
 
 resolve_env_file() {
@@ -232,11 +261,15 @@ ENVVARS
 
 run_up() {
   local skip_install=0
+  local share_tailscale=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --skip-install)
         skip_install=1
+        ;;
+      --share-tailscale)
+        share_tailscale=1
         ;;
       *)
         die "Unknown up argument: $1"
@@ -256,6 +289,26 @@ run_up() {
   fi
 
   run_in_repo bash ./scripts/longrun-up.sh
+
+  load_env_file "${env_file}"
+  local preview_port
+  preview_port="${WEB_PREVIEW_PORT:-4173}"
+  log "local preview URL: http://127.0.0.1:${preview_port}"
+
+  local tailscale_cmd dns_name
+  if tailscale_cmd="$(resolve_tailscale_cmd)" && "${tailscale_cmd}" status >/dev/null 2>&1; then
+    if dns_name="$(tailscale_dns_name "${tailscale_cmd}")"; then
+      log "tailscale direct URL (HTTP): http://${dns_name}:${preview_port}"
+      log "do not use https://${dns_name}:${preview_port} (that port is HTTP and may show iCloud/Safari warnings)"
+      log "for HTTPS access, run: poketcodex share tailscale"
+    else
+      log "for secure remote access, run: poketcodex share tailscale"
+    fi
+  fi
+
+  if [[ "${share_tailscale}" -eq 1 ]]; then
+    run_share_tailscale
+  fi
 }
 
 run_down() {
@@ -332,7 +385,12 @@ run_share_tailscale() {
 
   "${tailscale_cmd}" serve --bg --http=443 "http://127.0.0.1:${preview_port}"
   log "tailscale serve configured for http://127.0.0.1:${preview_port}"
-  log "check URL using: tailscale serve status"
+
+  local dns_name
+  if dns_name="$(tailscale_dns_name "${tailscale_cmd}")"; then
+    log "secure tailnet URL: https://${dns_name}"
+  fi
+  log "check active serve config: ${tailscale_cmd} serve status"
 }
 
 run_unshare_tailscale() {
