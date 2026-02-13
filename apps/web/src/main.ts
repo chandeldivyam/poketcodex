@@ -834,7 +834,7 @@ function restoreDraftPrompt(workspaceId: string | null, threadId: string | null)
 }
 
 async function handleDraftImageSelection(
-  files: FileList | null,
+  files: readonly File[] | FileList | null,
   source: DraftImageAttachment["source"]
 ): Promise<void> {
   if (!files || files.length === 0) {
@@ -854,7 +854,8 @@ async function handleDraftImageSelection(
     return;
   }
 
-  const imageFiles = [...files].filter((file) => file.type.startsWith("image/")).slice(0, remainingSlots);
+  const selectedFiles = [...files];
+  const imageFiles = selectedFiles.filter((file) => file.type.startsWith("image/")).slice(0, remainingSlots);
   if (imageFiles.length === 0) {
     setError("No image files were selected.");
     return;
@@ -911,6 +912,19 @@ async function handleDraftImageSelection(
   } finally {
     setImageAttachmentBusy(false);
   }
+}
+
+function dragEventHasFiles(event: DragEvent): boolean {
+  const dataTransfer = event.dataTransfer;
+  if (!dataTransfer) {
+    return false;
+  }
+
+  if (dataTransfer.files.length > 0) {
+    return true;
+  }
+
+  return Array.from(dataTransfer.types).includes("Files");
 }
 
 function removeDraftImage(imageId: string): void {
@@ -2621,7 +2635,7 @@ function attachHandlers(): void {
   });
 
   dom.composerImageInput.addEventListener("change", () => {
-    void handleDraftImageSelection(dom.composerImageInput.files, "upload");
+    void handleDraftImageSelection(Array.from(dom.composerImageInput.files ?? []), "upload");
     dom.composerImageInput.value = "";
   });
 
@@ -2634,6 +2648,68 @@ function attachHandlers(): void {
     }
 
     removeDraftImage(imageId);
+  });
+
+  let composerDragDepth = 0;
+  const updateComposerDragZone = (isOver: boolean): void => {
+    dom.turnForm.classList.toggle("is-drag-over", isOver);
+  };
+
+  dom.turnForm.addEventListener("dragover", (event) => {
+    const hasFiles = dragEventHasFiles(event);
+    if (!hasFiles) {
+      return;
+    }
+
+    event.preventDefault();
+    if (dom.composerImageInput.disabled) {
+      event.dataTransfer!.dropEffect = "none";
+      return;
+    }
+
+    event.dataTransfer!.dropEffect = "copy";
+  });
+
+  dom.turnForm.addEventListener("dragenter", (event) => {
+    if (!dragEventHasFiles(event) || dom.composerImageInput.disabled) {
+      return;
+    }
+
+    event.preventDefault();
+    composerDragDepth += 1;
+    updateComposerDragZone(true);
+  });
+
+  dom.turnForm.addEventListener("dragleave", (event) => {
+    if (!dragEventHasFiles(event)) {
+      return;
+    }
+
+    composerDragDepth -= 1;
+    if (composerDragDepth <= 0) {
+      composerDragDepth = 0;
+      updateComposerDragZone(false);
+    }
+  });
+
+  dom.turnForm.addEventListener("drop", (event) => {
+    if (!dragEventHasFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    composerDragDepth = 0;
+    updateComposerDragZone(false);
+    if (dom.composerImageInput.disabled) {
+      setError("Image attachments are unavailable while the composer is busy.");
+      return;
+    }
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    void handleDraftImageSelection(files, "upload");
   });
 
   dom.turnPromptInput.addEventListener("keydown", (event) => {

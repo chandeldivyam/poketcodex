@@ -811,6 +811,7 @@ export class AppRenderer {
       threadActionsDisabled ||
       turnRequestInFlight ||
       state.stream.imageAttachmentBusy;
+    this.dom.turnForm.classList.toggle("is-drag-disabled", mediaActionsDisabled);
     this.dom.composerAttachImageButton.textContent = state.stream.imageAttachmentBusy ? "…" : "+";
     this.dom.composerAttachImageButton.title = state.stream.imageAttachmentBusy ? "Processing image..." : "Add image";
     this.dom.composerAttachImageButton.setAttribute(
