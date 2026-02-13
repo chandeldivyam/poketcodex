@@ -59,6 +59,18 @@ bash ./scripts/install.sh --version=v0.1.0
 bash ./scripts/install.sh --skip-start --yes
 ```
 
+Remote access from another device (recommended):
+
+```bash
+~/.local/bin/poketcodex share tailscale
+```
+
+Then open the `https://<device>.ts.net` URL shown by the command.
+
+Important:
+- Do not use `https://<device>.ts.net:4173` directly.
+- Port `4173` is HTTP preview; Safari/iCloud Private Relay may block or warn on that HTTPS form.
+
 Build local release assets:
 
 ```bash

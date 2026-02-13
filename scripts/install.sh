@@ -20,6 +20,7 @@ SKIP_PNPM_CHECK=0
 LOCAL_SOURCE_TARBALL=""
 LOCAL_CHECKSUMS_FILE=""
 WORKSPACE_ROOT="${HOME}"
+TAILSCALE_CMD=""
 
 usage() {
   cat <<'USAGE'
@@ -68,6 +69,27 @@ die() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+resolve_tailscale_cmd() {
+  local candidate
+
+  if candidate="$(command -v tailscale 2>/dev/null)"; then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+
+  # macOS app bundle fallback (GUI app installed, CLI not on PATH).
+  for candidate in \
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale" \
+    "/Applications/Tailscale.app/Contents/MacOS/tailscale"; do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 require_cmd() {
@@ -192,8 +214,11 @@ preflight() {
   fi
 
   if [[ "${SKIP_TAILSCALE_CHECK}" -eq 0 ]]; then
-    require_cmd tailscale
-    if ! tailscale status >/dev/null 2>&1; then
+    if ! TAILSCALE_CMD="$(resolve_tailscale_cmd)"; then
+      die "Missing required command: tailscale (or macOS app CLI path /Applications/Tailscale.app/Contents/MacOS/Tailscale)"
+    fi
+
+    if ! "${TAILSCALE_CMD}" status >/dev/null 2>&1; then
       die "tailscale is installed but not connected; run: tailscale up"
     fi
   fi

@@ -51,6 +51,22 @@ jobs:
       - name: Build installer assets
         run: bash ./scripts/build-installer-assets.sh --out-dir=dist/release --ref="${{ steps.resolve-tag.outputs.tag }}"
 
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.resolve-tag.outputs.tag }}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "release exists for ${TAG}"
+          else
+            gh release create "${TAG}" \
+              --verify-tag \
+              --title "${TAG}" \
+              --notes "Automated installer assets release bootstrap for ${TAG}."
+          fi
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
