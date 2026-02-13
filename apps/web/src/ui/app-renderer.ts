@@ -1192,6 +1192,11 @@ export class AppRenderer {
 
     const pathLabel = document.createElement("strong");
     pathLabel.className = "git-file-path";
+    pathLabel.style.direction = "rtl";
+    pathLabel.style.textAlign = "left";
+    pathLabel.style.overflow = "hidden";
+    pathLabel.style.textOverflow = "ellipsis";
+    pathLabel.style.whiteSpace = "nowrap";
     pathLabel.textContent = entry.path;
 
     const statusCode = `${entry.staged}${entry.unstaged}`.trim() || "--";
@@ -1289,10 +1294,18 @@ export class AppRenderer {
       fileHeader.textContent = block.fileLabel ?? fallbackPath;
       blockElement.append(fileHeader);
 
-      if (block.metadata.length > 0) {
+      const filteredMetadata = block.metadata.filter((line) => {
+        if (line.startsWith("diff --git ")) return false;
+        if (line.startsWith("index ") && /^index [0-9a-f]+\.\.[0-9a-f]+/.test(line)) return false;
+        if (line.startsWith("--- a/") || line.startsWith("--- /dev/null")) return false;
+        if (line.startsWith("+++ b/") || line.startsWith("+++ /dev/null")) return false;
+        return true;
+      });
+
+      if (filteredMetadata.length > 0) {
         const metadata = document.createElement("div");
         metadata.className = "git-diff-metadata";
-        for (const line of block.metadata) {
+        for (const line of filteredMetadata) {
           const metadataLine = document.createElement("span");
           metadataLine.className = "git-diff-metadata-line";
           metadataLine.textContent = line;

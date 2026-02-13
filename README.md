@@ -11,7 +11,7 @@ Phase-0 monorepo scaffold for PocketCodex.
 
 - `apps/backend`: Fastify backend service (health endpoint + tests)
 - `apps/web`: Vite web app shell
-- `packages/shared`: Shared TypeScript utilities/types
+- `packages/shared`: Shared TypeScript utilities/types for backend and web apps
 - `infra`: Infrastructure notes and scripts
 - `docs`: Project docs
 
