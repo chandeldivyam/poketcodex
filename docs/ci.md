@@ -2,6 +2,7 @@
 
 The repository uses `.github/workflows/ci.yml` as the required validation pipeline.
 Installer-specific validation runs in `.github/workflows/installer-smoke.yml`.
+Automated release PR and tagging is handled by `.github/workflows/release-please.yml`.
 
 ## Jobs
 
@@ -12,6 +13,10 @@ Installer-specific validation runs in `.github/workflows/installer-smoke.yml`.
 `installer-smoke.yml` adds:
 
 - `installer-dryrun`: Builds local installer assets and validates the installer in `--skip-start` mode.
+
+`release-please.yml` adds:
+
+- `release-please`: Maintains a Release PR from `main` and auto-creates tags/releases when that PR is merged.
 
 ## Branch protection guidance
 

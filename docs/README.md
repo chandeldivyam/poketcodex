@@ -10,3 +10,4 @@ Execution and architecture docs live here as implementation progresses.
 - `chat-experience-focused-tasks.md`: scoped task plan and implementation tracker for YOLO + mobile-first chat UX improvements.
 - `chat-image-support-mobile.md`: mobile-first image attachment design, Codex protocol mapping, and implementation notes.
 - `one-command-install-strategy.md`: one-command install and CLI distribution strategy for Codex + Tailscale users.
+- `release-process.md`: automated Release PR (Release Please) flow and installer asset publishing lifecycle.
