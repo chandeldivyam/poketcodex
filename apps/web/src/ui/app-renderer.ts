@@ -878,6 +878,7 @@ export class AppRenderer {
       button.className = `workspace-item workspace-tree-workspace ${isSelected ? "is-selected" : ""}`.trim();
       button.dataset.action = "workspace-select";
       button.dataset.workspaceId = workspace.workspaceId;
+      button.title = workspace.absolutePath;
 
       const title = document.createElement("strong");
       title.textContent = workspace.displayName;
@@ -920,17 +921,7 @@ export class AppRenderer {
 
       rightMeta.append(updatedAt, badgeStack);
       titleRow.append(title, rightMeta);
-
-      const path = document.createElement("span");
-      path.className = "list-item-path";
-      path.textContent = truncateInlineText(workspace.absolutePath, 58);
-      path.title = workspace.absolutePath;
-
-      if (isSelected) {
-        button.append(titleRow, path);
-      } else {
-        button.append(titleRow);
-      }
+      button.append(titleRow);
       workspaceRow.append(toggleButton, button);
       group.append(workspaceRow);
 
@@ -961,7 +952,7 @@ export class AppRenderer {
             const hasUnread = state.thread.unreadByThreadId[thread.threadId] === true;
             const transcriptState = state.thread.transcriptsByThreadId[thread.threadId];
             const transcriptHydration = transcriptState?.hydration ?? "idle";
-            const previewText = this.threadPreviewText(transcriptState) ?? thread.threadId;
+            const previewText = this.threadPreviewText(transcriptState) ?? "Open thread to load messages";
 
             const threadButton = document.createElement("button");
             threadButton.type = "button";
@@ -969,9 +960,11 @@ export class AppRenderer {
             threadButton.dataset.action = "thread-select";
             threadButton.dataset.threadId = thread.threadId;
             threadButton.dataset.workspaceId = workspace.workspaceId;
+            threadButton.title = thread.threadId;
 
             const threadTitle = document.createElement("strong");
-            threadTitle.textContent = thread.title;
+            threadTitle.textContent = this.compactThreadTitle(thread.title);
+            threadTitle.title = thread.title;
 
             const threadTitleRow = document.createElement("div");
             threadTitleRow.className = "list-item-title-row";
@@ -1085,6 +1078,19 @@ export class AppRenderer {
     }
 
     return "No messages yet";
+  }
+
+  private compactThreadTitle(title: string): string {
+    const trimmedTitle = title.trim();
+    if (trimmedTitle.length <= 44) {
+      return trimmedTitle;
+    }
+
+    if (/^[a-f0-9-]+$/i.test(trimmedTitle)) {
+      return `${trimmedTitle.slice(0, 14)}…${trimmedTitle.slice(-8)}`;
+    }
+
+    return `${trimmedTitle.slice(0, 43)}…`;
   }
 
   private renderContextLabels(): void {

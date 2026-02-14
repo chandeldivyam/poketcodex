@@ -67,25 +67,20 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     <main class="app-shell">
       <header class="app-header">
         <div class="header-main">
-          <div class="header-copy">
-            <p class="eyebrow">Workspace Runtime Console</p>
-            <h1>PocketCodex</h1>
-            <p class="subhead">Mobile Codex control plane</p>
-          </div>
-          <div class="header-actions">
-            <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
-            <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <line x1="3" y1="5" x2="17" y2="5"/>
-                <line x1="3" y1="10" x2="17" y2="10"/>
-                <line x1="3" y1="15" x2="17" y2="15"/>
-              </svg>
-            </button>
-          </div>
+          <h1>PocketCodex</h1>
+          <p class="header-context">Workspace runtime console</p>
         </div>
-        <div class="status-row" aria-label="Session controls">
+        <div class="header-actions" aria-label="Session controls">
+          <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
           <button class="button-secondary" type="button" data-role="reconnect-events">Reconnect</button>
           <button class="button-secondary" type="button" data-role="logout">Logout</button>
+          <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="3" y1="5" x2="17" y2="5"/>
+              <line x1="3" y1="10" x2="17" y2="10"/>
+              <line x1="3" y1="15" x2="17" y2="15"/>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -117,9 +112,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
           </section>
 
           <section class="panel utility-panel">
-            <h2>Utilities</h2>
-            <div class="utility-actions">
+            <h2>Actions</h2>
+            <div class="utility-actions utility-actions-primary">
               <button type="button" data-role="start-thread">New Thread</button>
+            </div>
+            <div class="utility-actions utility-actions-secondary">
               <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
               <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh Workspaces</button>
               <button class="button-secondary" type="button" data-role="open-git-review">Open Git Review</button>
