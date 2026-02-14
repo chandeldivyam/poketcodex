@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.4.0...poketcodex-v0.5.0) (2026-02-14)
+
+
+### Features
+
+* **web:** add codex-style workspace tree foundation ([a37ae94](https://github.com/chandeldivyam/poketcodex/commit/a37ae94411d580bafa01bf684258902a6ef02587))
+* **web:** add composer drag-and-drop image attachments ([c927ec9](https://github.com/chandeldivyam/poketcodex/commit/c927ec9c42d2a90bd46e70c4113f9491021e44ba))
+* **web:** add composer drag-and-drop image attachments ([b5863f4](https://github.com/chandeldivyam/poketcodex/commit/b5863f45f4a2be0045078751222055d51116bf6d))
+* **web:** surface file-change details in transcript and runtime UI ([9b47e40](https://github.com/chandeldivyam/poketcodex/commit/9b47e40cc74e3f5d7a2054d4e3db0067eb138e87))
+
 ## [0.4.0](https://github.com/chandeldivyam/poketcodex/compare/poketcodex-v0.3.0...poketcodex-v0.4.0) (2026-02-13)
 
 
