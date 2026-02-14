@@ -9,5 +9,6 @@ Execution and architecture docs live here as implementation progresses.
 - `chat-experience-audit-vs-codex.md`: deep UX parity audit and phased improvement roadmap against Codex TUI/IDE experience.
 - `chat-experience-focused-tasks.md`: scoped task plan and implementation tracker for YOLO + mobile-first chat UX improvements.
 - `chat-image-support-mobile.md`: mobile-first image attachment design, Codex protocol mapping, and implementation notes.
+- `runtime-event-reference.md`: observed websocket runtime event catalog (methods, payload shapes, and UI visibility rules).
 - `one-command-install-strategy.md`: one-command install and CLI distribution strategy for Codex + Tailscale users.
 - `release-process.md`: automated Release PR (Release Please) flow and installer asset publishing lifecycle.

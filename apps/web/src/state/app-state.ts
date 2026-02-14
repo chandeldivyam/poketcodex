@@ -58,6 +58,15 @@ export interface TranscriptToolItem {
   turnId?: string;
   runtimeItemId?: string;
   streaming?: boolean;
+  fileChanges?: FileChangeInfo[];
+}
+
+export interface FileChangeInfo {
+  path: string;
+  status: "M" | "A" | "D" | "R" | "modified" | "added" | "deleted" | "renamed";
+  additions?: number;
+  deletions?: number;
+  diff?: string;
 }
 
 export type TranscriptItem = TranscriptMessageItem | TranscriptReasoningItem | TranscriptToolItem;

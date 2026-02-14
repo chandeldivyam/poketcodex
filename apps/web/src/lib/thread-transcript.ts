@@ -1,4 +1,10 @@
-import type { TranscriptItem, TranscriptMessageItem, TranscriptReasoningItem, TranscriptToolItem } from "../state/app-state.js";
+import type {
+  TranscriptItem,
+  TranscriptMessageItem,
+  TranscriptReasoningItem,
+  TranscriptToolItem,
+  FileChangeInfo
+} from "../state/app-state.js";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object") {
@@ -96,6 +102,66 @@ function fileChangeSummary(item: Record<string, unknown>): string | null {
   return paths.join(", ");
 }
 
+function extractFileChanges(item: Record<string, unknown>): FileChangeInfo[] {
+  const changes = item.changes;
+  if (!Array.isArray(changes)) {
+    return [];
+  }
+
+  const fileChanges: FileChangeInfo[] = [];
+  for (const rawChange of changes) {
+    const change = asRecord(rawChange);
+    if (!change) {
+      continue;
+    }
+
+    const path = asString(change.path);
+    if (!path) {
+      continue;
+    }
+
+    const status = asString(change.status) ?? asString(change.type) ?? "modified";
+    const diff = asString(change.diff) ?? asString(change.unified_diff) ?? undefined;
+
+    // Try to extract stats from diff or change object
+    let additions: number | undefined;
+    let deletions: number | undefined;
+
+    if (typeof change.additions === "number") {
+      additions = change.additions;
+    }
+    if (typeof change.deletions === "number") {
+      deletions = change.deletions;
+    }
+
+    // If stats not provided, try to count from diff
+    if (diff && (additions === undefined || deletions === undefined)) {
+      const lines = diff.split("\n");
+      let addCount = 0;
+      let delCount = 0;
+      for (const line of lines) {
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+          addCount++;
+        } else if (line.startsWith("-") && !line.startsWith("---")) {
+          delCount++;
+        }
+      }
+      additions = additions ?? addCount;
+      deletions = deletions ?? delCount;
+    }
+
+    fileChanges.push({
+      path,
+      status: status as FileChangeInfo["status"],
+      ...(additions !== undefined ? { additions } : {}),
+      ...(deletions !== undefined ? { deletions } : {}),
+      ...(diff ? { diff } : {})
+    });
+  }
+
+  return fileChanges;
+}
+
 function toolItemFromRecord(item: Record<string, unknown>, turnId: string | undefined): TranscriptToolItem {
   const type = asString(item.type) ?? "tool";
   const id = asString(item.id) ?? type;
@@ -115,7 +181,10 @@ function toolItemFromRecord(item: Record<string, unknown>, turnId: string | unde
   }
 
   if (type === "fileChange") {
-    const detail = fileChangeSummary(item) ?? asString(item.status);
+    const fileChanges = extractFileChanges(item);
+    const detail = fileChanges.length > 0
+      ? fileChanges.map(fc => fc.path).join(", ")
+      : (fileChangeSummary(item) ?? asString(item.status));
     const output = asString(item.output) ?? undefined;
     return {
       id,
@@ -124,7 +193,8 @@ function toolItemFromRecord(item: Record<string, unknown>, turnId: string | unde
       ...(detail ? { detail } : {}),
       ...(output ? { output } : {}),
       ...(turnId ? { turnId } : {}),
-      runtimeItemId: id
+      runtimeItemId: id,
+      ...(fileChanges.length > 0 ? { fileChanges } : {})
     };
   }
 

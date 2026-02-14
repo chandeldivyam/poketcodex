@@ -21,7 +21,7 @@
 
   --bg-1: #eceff3;
   --bg-2: #f5f7fa;
-  --bg-3: #e5e9ef;
+  --bg-3: #dfe5ec;
   --panel-bg: rgba(255, 255, 255, 0.96);
   --ink: #131d2a;
   --ink-muted: #65758c;
@@ -977,6 +977,51 @@ form {
   font-size: 0;
   overflow: hidden;
   gap: 0;
+}
+
+.composer-context-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  transition: all 0.15s ease;
+}
+
+.context-chip-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.context-chip-label {
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-chip-workspace {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.context-chip-git {
+  color: var(--ink);
 }
 
 .composer-inline-row {
@@ -2193,6 +2238,138 @@ form {
     padding: 0.22rem 0.56rem;
     font-size: 0.66rem;
   }
+}
+
+/* Turn Boundaries */
+.turn-boundary {
+  margin: var(--space-5) 0;
+  padding: var(--space-3) 0;
+  border-top: 2px solid var(--border);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.turn-boundary-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.turn-boundary-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* File Change Cards */
+.file-change-card {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+.file-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.file-change-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.84rem;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
+}
+
+.file-change-item:last-child {
+  border-bottom: none;
+}
+
+.file-status-badge {
+  flex-shrink: 0;
+  width: 1.2rem;
+  height: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
+}
+
+.file-status-modified {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.file-status-added {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.file-status-deleted {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.file-status-renamed {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+.file-stats {
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.file-change-diff-details {
+  margin-top: var(--space-2);
+  width: 100%;
+}
+
+.file-change-diff-summary {
+  cursor: pointer;
+  font-size: 0.76rem;
+  color: var(--accent);
+  font-weight: 500;
+  padding: var(--space-1) 0;
+  user-select: none;
+}
+
+.file-change-diff-summary:hover {
+  color: var(--accent-hover);
+}
+
+.file-change-diff-container {
+  margin-top: var(--space-2);
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
