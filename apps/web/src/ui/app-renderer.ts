@@ -891,10 +891,12 @@ export class AppRenderer {
       const badgeStack = document.createElement("span");
       badgeStack.className = "list-item-badge-stack";
 
-      const trustBadge = document.createElement("span");
-      trustBadge.className = `workspace-badge workspace-badge-${workspace.trusted ? "trusted" : "restricted"}`;
-      trustBadge.textContent = workspace.trusted ? "Trusted" : "Restricted";
-      badgeStack.append(trustBadge);
+      if (isSelected || !workspace.trusted) {
+        const trustBadge = document.createElement("span");
+        trustBadge.className = `workspace-badge workspace-badge-${workspace.trusted ? "trusted" : "restricted"}`;
+        trustBadge.textContent = workspace.trusted ? "Trusted" : "Restricted";
+        badgeStack.append(trustBadge);
+      }
 
       if (isSelected) {
         badgeStack.append(createNavigationStateChip("current", "Current"));
@@ -924,7 +926,11 @@ export class AppRenderer {
       path.textContent = truncateInlineText(workspace.absolutePath, 58);
       path.title = workspace.absolutePath;
 
-      button.append(titleRow, path);
+      if (isSelected) {
+        button.append(titleRow, path);
+      } else {
+        button.append(titleRow);
+      }
       workspaceRow.append(toggleButton, button);
       group.append(workspaceRow);
 
