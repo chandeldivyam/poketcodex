@@ -706,13 +706,15 @@ export class AppRenderer {
       this.renderError();
     }
 
+    if (changedSlices.has("workspace") || changedSlices.has("thread") || changedSlices.has("stream") || changedSlices.has("session")) {
+      this.renderWorkspaceThreadTree();
+    }
+
     if (changedSlices.has("workspace")) {
-      this.renderWorkspaceList();
       this.renderContextLabels();
     }
 
     if (changedSlices.has("thread")) {
-      this.renderThreadList();
       this.renderContextLabels();
       this.renderTranscript();
     }
@@ -842,20 +844,39 @@ export class AppRenderer {
     this.dom.gitReviewToggleFilesButton.textContent = state.gitReview.filesCollapsed ? "Show Files" : "Hide Files";
   }
 
-  private renderWorkspaceList(): void {
+  private renderWorkspaceThreadTree(): void {
     const state = this.readState();
 
     if (state.workspace.workspaces.length === 0) {
-      this.dom.workspaceList.replaceChildren(renderEmptyMessage("No workspaces yet."));
+      this.dom.workspaceTree.replaceChildren(renderEmptyMessage("No workspaces yet."));
       return;
     }
 
+    const expandedWorkspaceIds = new Set(state.thread.expandedWorkspaceIds);
     const fragment = document.createDocumentFragment();
     for (const workspace of state.workspace.workspaces) {
       const isSelected = workspace.workspaceId === state.workspace.selectedWorkspaceId;
+      const isExpanded = expandedWorkspaceIds.has(workspace.workspaceId);
+
+      const group = document.createElement("section");
+      group.className = `workspace-tree-group ${isSelected ? "is-selected-workspace" : ""}`.trim();
+
+      const workspaceRow = document.createElement("div");
+      workspaceRow.className = "workspace-tree-workspace-row";
+
+      const toggleButton = document.createElement("button");
+      toggleButton.type = "button";
+      toggleButton.className = "workspace-tree-toggle";
+      toggleButton.dataset.action = "workspace-toggle";
+      toggleButton.dataset.workspaceId = workspace.workspaceId;
+      toggleButton.dataset.expanded = isExpanded ? "true" : "false";
+      toggleButton.textContent = isExpanded ? "▾" : "▸";
+      toggleButton.setAttribute("aria-label", isExpanded ? "Collapse workspace" : "Expand workspace");
+
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `workspace-item ${isSelected ? "is-selected" : ""}`.trim();
+      button.className = `workspace-item workspace-tree-workspace ${isSelected ? "is-selected" : ""}`.trim();
+      button.dataset.action = "workspace-select";
       button.dataset.workspaceId = workspace.workspaceId;
 
       const title = document.createElement("strong");
@@ -899,94 +920,108 @@ export class AppRenderer {
       metadata.textContent = updatedLabel ? `Updated ${updatedLabel}` : "Update time unavailable";
 
       button.append(titleRow, path, metadata);
-      fragment.append(button);
-    }
+      workspaceRow.append(toggleButton, button);
+      group.append(workspaceRow);
 
-    this.dom.workspaceList.replaceChildren(fragment);
-  }
+      if (isExpanded) {
+        const threadContainer = document.createElement("div");
+        threadContainer.className = "workspace-tree-threads";
 
-  private renderThreadList(): void {
-    const state = this.readState();
+        const threadHydration = state.thread.threadHydrationByWorkspaceId[workspace.workspaceId] ?? "idle";
+        const threads = state.thread.threadsByWorkspaceId[workspace.workspaceId] ?? [];
+        if (threadHydration === "loading" && threads.length === 0) {
+          const loadingMessage = renderEmptyMessage("Loading threads...");
+          loadingMessage.classList.add("workspace-tree-empty");
+          threadContainer.append(loadingMessage);
+        } else if (threadHydration === "error" && threads.length === 0) {
+          const errorMessage = renderEmptyMessage("Thread load failed. Expand again to retry.");
+          errorMessage.classList.add("workspace-tree-empty");
+          threadContainer.append(errorMessage);
+        } else if (threads.length === 0) {
+          const emptyMessage = renderEmptyMessage(
+            threadHydration === "idle" ? "Expand to load threads." : "No thread metadata yet."
+          );
+          emptyMessage.classList.add("workspace-tree-empty");
+          threadContainer.append(emptyMessage);
+        } else {
+          for (const thread of threads) {
+            const isSelectedThread = thread.threadId === state.thread.selectedThreadId;
+            const isRunning = state.thread.runningByThreadId[thread.threadId] === true;
+            const hasUnread = state.thread.unreadByThreadId[thread.threadId] === true;
+            const transcriptState = state.thread.transcriptsByThreadId[thread.threadId];
+            const transcriptHydration = transcriptState?.hydration ?? "idle";
+            const previewText = this.threadPreviewText(transcriptState) ?? thread.threadId;
 
-    if (state.thread.threads.length === 0) {
-      this.dom.threadList.replaceChildren(renderEmptyMessage("No thread metadata yet."));
-      return;
-    }
+            const threadButton = document.createElement("button");
+            threadButton.type = "button";
+            threadButton.className = `thread-item workspace-tree-thread ${isSelectedThread ? "is-selected" : ""}`.trim();
+            threadButton.dataset.action = "thread-select";
+            threadButton.dataset.threadId = thread.threadId;
+            threadButton.dataset.workspaceId = workspace.workspaceId;
 
-    const fragment = document.createDocumentFragment();
-    for (const thread of state.thread.threads) {
-      const isSelected = thread.threadId === state.thread.selectedThreadId;
-      const isRunning = state.thread.runningByThreadId[thread.threadId] === true;
-      const hasUnread = state.thread.unreadByThreadId[thread.threadId] === true;
-      const transcriptState = state.thread.transcriptsByThreadId[thread.threadId];
-      const transcriptHydration = transcriptState?.hydration ?? "idle";
-      const previewText = this.threadPreviewText(transcriptState) ?? thread.threadId;
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `thread-item ${isSelected ? "is-selected" : ""}`.trim();
-      button.dataset.threadId = thread.threadId;
+            const threadTitle = document.createElement("strong");
+            threadTitle.textContent = thread.title;
 
-      const title = document.createElement("strong");
-      title.textContent = thread.title;
+            const threadTitleRow = document.createElement("div");
+            threadTitleRow.className = "list-item-title-row";
+            const threadBadgeStack = document.createElement("span");
+            threadBadgeStack.className = "list-item-badge-stack";
 
-      const titleRow = document.createElement("div");
-      titleRow.className = "list-item-title-row";
-      const badgeStack = document.createElement("span");
-      badgeStack.className = "list-item-badge-stack";
+            if (thread.archived) {
+              threadBadgeStack.append(createNavigationStateChip("archived", "Archived"));
+            }
 
-      if (thread.archived) {
-        badgeStack.append(createNavigationStateChip("archived", "Archived"));
-      }
+            if (isRunning) {
+              threadBadgeStack.append(createNavigationStateChip("running", "Running"));
+            }
 
-      if (isRunning) {
-        badgeStack.append(createNavigationStateChip("running", "Running"));
-      }
+            if (hasUnread && !isSelectedThread) {
+              threadBadgeStack.append(createNavigationStateChip("unread", "Unread"));
+            }
 
-      if (hasUnread && !isSelected) {
-        badgeStack.append(createNavigationStateChip("unread", "Unread"));
-      }
+            if (isSelectedThread) {
+              threadBadgeStack.append(createNavigationStateChip("current", "Current"));
+              const turnPhaseChip = createTurnPhaseChip(state.stream.turnPhase);
+              if (turnPhaseChip) {
+                threadBadgeStack.append(turnPhaseChip);
+              }
+            }
 
-      if (isSelected) {
-        badgeStack.append(createNavigationStateChip("current", "Current"));
-        const turnPhaseChip = createTurnPhaseChip(state.stream.turnPhase);
-        if (turnPhaseChip) {
-          badgeStack.append(turnPhaseChip);
+            if (isSelectedThread && transcriptHydration === "loading") {
+              threadBadgeStack.append(createNavigationStateChip("pending", "Loading"));
+            }
+
+            if (isSelectedThread && transcriptHydration === "error") {
+              threadBadgeStack.append(createNavigationStateChip("error", "History Error"));
+            }
+
+            threadTitleRow.append(threadTitle, threadBadgeStack);
+
+            const preview = document.createElement("span");
+            preview.className = "list-item-preview";
+            preview.textContent = previewText;
+
+            const threadId = document.createElement("span");
+            threadId.className = "list-item-id";
+            threadId.textContent = thread.threadId;
+
+            const threadMeta = document.createElement("span");
+            threadMeta.className = "list-item-meta";
+            const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
+            threadMeta.textContent = lastSeenLabel ? `Last seen ${lastSeenLabel}` : "No recent activity";
+
+            threadButton.append(threadTitleRow, preview, threadId, threadMeta);
+            threadContainer.append(threadButton);
+          }
         }
+
+        group.append(threadContainer);
       }
 
-      if (isSelected && transcriptHydration === "loading") {
-        badgeStack.append(createNavigationStateChip("pending", "Loading"));
-      }
-
-      if (isSelected && transcriptHydration === "error") {
-        badgeStack.append(createNavigationStateChip("error", "History Error"));
-      }
-
-      if (isSelected && state.session.error && state.stream.turnPhase !== "error") {
-        badgeStack.append(createNavigationStateChip("error", "Needs Attention"));
-      }
-
-      titleRow.append(title, badgeStack);
-
-      const preview = document.createElement("span");
-      preview.className = "list-item-preview";
-      preview.textContent = previewText;
-
-      const threadId = document.createElement("span");
-      threadId.className = "list-item-id";
-      threadId.textContent = thread.threadId;
-
-      const metadata = document.createElement("span");
-      metadata.className = "list-item-meta";
-      const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
-      metadata.textContent = lastSeenLabel ? `Last seen ${lastSeenLabel}` : "No recent activity";
-
-      button.append(titleRow, preview, threadId, metadata);
-
-      fragment.append(button);
+      fragment.append(group);
     }
 
-    this.dom.threadList.replaceChildren(fragment);
+    this.dom.workspaceTree.replaceChildren(fragment);
   }
 
   private threadPreviewText(transcriptState: ThreadTranscriptState | undefined): string | null {
@@ -1044,12 +1079,8 @@ export class AppRenderer {
 
   private renderContextLabels(): void {
     const state = this.readState();
-    const activeWorkspace = selectActiveWorkspace(state);
     const selectedThreadLabel = selectSelectedThreadLabel(state);
 
-    this.dom.selectedWorkspaceLabel.textContent = activeWorkspace?.displayName ?? "None";
-    this.dom.selectedThreadLabel.textContent =
-      selectedThreadLabel === "None" ? "None" : truncateInlineText(selectedThreadLabel, 52);
     this.dom.conversationTitle.textContent = formatConversationHeading(selectedThreadLabel);
   }
 
