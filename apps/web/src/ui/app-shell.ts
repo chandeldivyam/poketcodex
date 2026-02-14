@@ -24,6 +24,11 @@ export interface AppDomRefs {
   composerAttachImageButton: HTMLButtonElement;
   composerImageInput: HTMLInputElement;
   composerImageList: HTMLElement;
+  composerContextChips: HTMLElement;
+  contextChipWorkspace: HTMLElement;
+  contextChipWorkspaceLabel: HTMLElement;
+  contextChipGit: HTMLElement;
+  contextChipGitLabel: HTMLElement;
   turnStatusChip: HTMLElement;
   turnStatusText: HTMLElement;
   backgroundTerminalRow: HTMLElement;
@@ -179,6 +184,16 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
             </div>
 
             <form id="turn-form" class="composer-form">
+              <div class="composer-context-chips" data-role="composer-context-chips">
+                <span class="context-chip context-chip-workspace" data-role="context-chip-workspace">
+                  <span class="context-chip-icon">📁</span>
+                  <span class="context-chip-label" data-role="context-chip-workspace-label">Workspace</span>
+                </span>
+                <span class="context-chip context-chip-git is-hidden" data-role="context-chip-git">
+                  <span class="context-chip-icon">🌿</span>
+                  <span class="context-chip-label" data-role="context-chip-git-label">main</span>
+                </span>
+              </div>
               <div class="composer-inline-row">
                 <input
                   class="is-hidden"
@@ -369,6 +384,11 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     composerAttachImageButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-attach-image']"),
     composerImageInput: requireElement<HTMLInputElement>(root, "[data-role='composer-image-input']"),
     composerImageList: requireElement<HTMLElement>(root, "[data-role='composer-image-list']"),
+    composerContextChips: requireElement<HTMLElement>(root, "[data-role='composer-context-chips']"),
+    contextChipWorkspace: requireElement<HTMLElement>(root, "[data-role='context-chip-workspace']"),
+    contextChipWorkspaceLabel: requireElement<HTMLElement>(root, "[data-role='context-chip-workspace-label']"),
+    contextChipGit: requireElement<HTMLElement>(root, "[data-role='context-chip-git']"),
+    contextChipGitLabel: requireElement<HTMLElement>(root, "[data-role='context-chip-git-label']"),
     turnStatusChip: requireElement<HTMLElement>(root, "[data-role='turn-status-chip']"),
     turnStatusText: requireElement<HTMLElement>(root, "[data-role='turn-status-text']"),
     backgroundTerminalRow: requireElement<HTMLElement>(root, "[data-role='background-terminal-row']"),

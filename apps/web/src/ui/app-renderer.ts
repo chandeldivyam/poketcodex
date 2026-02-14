@@ -2,6 +2,7 @@ import type {
   AppState,
   AppStateKey,
   DraftImageAttachment,
+  FileChangeInfo,
   GitStatusEntry,
   ThreadTranscriptState,
   TimelineEventCategory,
@@ -710,7 +711,7 @@ export class AppRenderer {
       this.renderWorkspaceThreadTree();
     }
 
-    if (changedSlices.has("workspace")) {
+    if (changedSlices.has("workspace") || changedSlices.has("gitReview")) {
       this.renderContextLabels();
     }
 
@@ -1096,8 +1097,30 @@ export class AppRenderer {
   private renderContextLabels(): void {
     const state = this.readState();
     const selectedThreadLabel = selectSelectedThreadLabel(state);
+    const activeWorkspace = selectActiveWorkspace(state);
 
     this.dom.conversationTitle.textContent = formatConversationHeading(selectedThreadLabel);
+
+    // Update composer context chips
+    if (activeWorkspace) {
+      const workspaceName = activeWorkspace.absolutePath.split("/").pop() || activeWorkspace.absolutePath;
+      this.dom.contextChipWorkspaceLabel.textContent = workspaceName;
+    } else {
+      this.dom.contextChipWorkspaceLabel.textContent = "No workspace";
+    }
+
+    // Update git context chip
+    const git = state.gitReview;
+    if (git.supported && git.branch) {
+      setHidden(this.dom.contextChipGit, false);
+      const changedCount = git.entries.length;
+      const branchLabel = changedCount > 0
+        ? `${git.branch} (${changedCount} ${changedCount === 1 ? "file" : "files"})`
+        : git.branch;
+      this.dom.contextChipGitLabel.textContent = branchLabel;
+    } else {
+      setHidden(this.dom.contextChipGit, true);
+    }
   }
 
   private renderDraftPrompt(): void {
@@ -1519,6 +1542,158 @@ export class AppRenderer {
     return `${this.transcriptItemKey(item, threadId)}::${detailKey}`;
   }
 
+  private createTurnBoundary(turnId: string): HTMLDivElement {
+    const boundary = document.createElement("div");
+    boundary.className = "turn-boundary";
+
+    const header = document.createElement("div");
+    header.className = "turn-boundary-header";
+
+    const badge = document.createElement("span");
+    badge.className = "turn-boundary-badge";
+    badge.textContent = `Turn ${turnId.slice(-6)}`; // Show last 6 chars of turn ID
+
+    header.append(badge);
+    boundary.append(header);
+
+    return boundary;
+  }
+
+  private createFileChangeCard(changes: FileChangeInfo[], threadId: string, itemId: string): HTMLDivElement {
+    const card = document.createElement("div");
+    card.className = "file-change-card";
+
+    const fileList = document.createElement("ul");
+    fileList.className = "file-change-list";
+
+    for (const change of changes) {
+      const item = document.createElement("li");
+      item.className = "file-change-item";
+
+      const statusBadge = document.createElement("span");
+      statusBadge.className = `file-status-badge file-status-${this.normalizeFileStatus(change.status)}`;
+      statusBadge.textContent = this.getFileStatusLabel(change.status);
+
+      const filePath = document.createElement("span");
+      filePath.className = "file-path";
+      filePath.textContent = change.path;
+
+      item.append(statusBadge, filePath);
+
+      if (change.additions !== undefined || change.deletions !== undefined) {
+        const stats = document.createElement("span");
+        stats.className = "file-stats";
+        const adds = change.additions ?? 0;
+        const dels = change.deletions ?? 0;
+        stats.textContent = `+${adds} -${dels}`;
+        item.append(stats);
+      }
+
+      // If there's a diff, add an expandable section
+      if (change.diff && change.diff.trim().length > 0) {
+        const diffDetails = document.createElement("details");
+        diffDetails.className = "file-change-diff-details";
+        const detailKey = `${threadId}::${itemId}::diff::${change.path}`;
+        diffDetails.open = this.transcriptOpenDetailKeys.has(detailKey);
+
+        const summary = document.createElement("summary");
+        summary.textContent = "View diff";
+        summary.className = "file-change-diff-summary";
+
+        const diffContainer = document.createElement("div");
+        diffContainer.className = "file-change-diff-container";
+
+        // Render the diff using existing git diff parser
+        const parsedDiff = parseUnifiedGitDiff(change.diff);
+        for (const block of parsedDiff.blocks) {
+          const blockElement = this.renderDiffBlock(block);
+          diffContainer.append(blockElement);
+        }
+
+        diffDetails.addEventListener("toggle", () => {
+          if (diffDetails.open) {
+            this.transcriptOpenDetailKeys.add(detailKey);
+          } else {
+            this.transcriptOpenDetailKeys.delete(detailKey);
+          }
+        });
+
+        diffDetails.append(summary, diffContainer);
+        item.append(diffDetails);
+      }
+
+      fileList.append(item);
+    }
+
+    card.append(fileList);
+    return card;
+  }
+
+  private normalizeFileStatus(status: string): string {
+    const normalized = status.toLowerCase();
+    if (normalized === "m" || normalized === "modified") return "modified";
+    if (normalized === "a" || normalized === "added") return "added";
+    if (normalized === "d" || normalized === "deleted") return "deleted";
+    if (normalized === "r" || normalized === "renamed") return "renamed";
+    return "modified";
+  }
+
+  private getFileStatusLabel(status: string): string {
+    const normalized = status.toLowerCase();
+    if (normalized === "m" || normalized === "modified") return "M";
+    if (normalized === "a" || normalized === "added") return "A";
+    if (normalized === "d" || normalized === "deleted") return "D";
+    if (normalized === "r" || normalized === "renamed") return "R";
+    return "M";
+  }
+
+  private renderDiffBlock(block: ParsedGitDiffBlock): HTMLDivElement {
+    const container = document.createElement("div");
+    container.className = "git-diff-block";
+
+    for (const hunk of block.hunks) {
+      const hunkDiv = document.createElement("div");
+      hunkDiv.className = "git-diff-hunk";
+
+      const hunkHeader = document.createElement("div");
+      hunkHeader.className = "git-diff-hunk-header";
+      hunkHeader.textContent = hunk.header;
+      hunkDiv.append(hunkHeader);
+
+      const linesTable = document.createElement("table");
+      linesTable.className = "git-diff-lines";
+
+      for (const line of hunk.lines) {
+        const row = document.createElement("tr");
+        row.className = `git-diff-line git-diff-line-${line.kind}`;
+
+        const oldLineCell = document.createElement("td");
+        oldLineCell.className = "git-diff-line-number git-diff-line-number-old";
+        oldLineCell.textContent = line.oldLine !== null ? line.oldLine.toString() : "";
+
+        const newLineCell = document.createElement("td");
+        newLineCell.className = "git-diff-line-number git-diff-line-number-new";
+        newLineCell.textContent = line.newLine !== null ? line.newLine.toString() : "";
+
+        const markerCell = document.createElement("td");
+        markerCell.className = "git-diff-line-marker";
+        markerCell.textContent = line.marker;
+
+        const textCell = document.createElement("td");
+        textCell.className = "git-diff-line-text";
+        textCell.textContent = line.text;
+
+        row.append(oldLineCell, newLineCell, markerCell, textCell);
+        linesTable.append(row);
+      }
+
+      hunkDiv.append(linesTable);
+      container.append(hunkDiv);
+    }
+
+    return container;
+  }
+
   private createTranscriptItem(item: TranscriptItem, threadId: string): HTMLLIElement {
     const lineItem = document.createElement("li");
     lineItem.className = `transcript-item transcript-${item.kind}`;
@@ -1627,7 +1802,11 @@ export class AppRenderer {
 
     lineItem.append(heading);
 
-    if (item.detail) {
+    // Render file changes prominently if available
+    if (item.fileChanges && item.fileChanges.length > 0) {
+      const fileChangeCard = this.createFileChangeCard(item.fileChanges, threadId, item.id);
+      lineItem.append(fileChangeCard);
+    } else if (item.detail) {
       const detail = document.createElement("p");
       detail.className = "transcript-message transcript-tool-detail";
       detail.textContent = item.detail;
@@ -1714,8 +1893,23 @@ export class AppRenderer {
     }
 
     const fragment = document.createDocumentFragment();
-    for (const item of transcript.items) {
+    let lastTurnId: string | undefined = undefined;
+
+    for (let i = 0; i < transcript.items.length; i++) {
+      const item = transcript.items[i];
+      if (!item) {
+        continue;
+      }
+
+      const currentTurnId = item.turnId;
+
+      // Insert turn boundary when turn changes (but not for the first item)
+      if (i > 0 && currentTurnId && lastTurnId && currentTurnId !== lastTurnId) {
+        fragment.append(this.createTurnBoundary(currentTurnId));
+      }
+
       fragment.append(this.createTranscriptItem(item, selectedThreadId));
+      lastTurnId = currentTurnId;
     }
     this.dom.transcriptList.replaceChildren(fragment);
 
@@ -1782,21 +1976,31 @@ export class AppRenderer {
       return;
     }
 
-    const { visibleEvents, hiddenInternalCount, hiddenStatusCount } = this.buildEventViews();
+    const { visibleEvents, hiddenInternalCount, hiddenStatusCount, hiddenDeltaCount } = this.buildEventViews();
 
     this.renderEventToolbar(
       state.stream.showStatusEvents,
       hiddenStatusCount,
       state.stream.showInternalEvents,
-      hiddenInternalCount
+      hiddenInternalCount,
+      hiddenDeltaCount
     );
 
     if (visibleEvents.length === 0) {
       const placeholder = document.createElement("li");
       placeholder.className = "timeline-item timeline-system";
-      if (hiddenStatusCount > 0 || hiddenInternalCount > 0) {
-        placeholder.textContent =
-          "Events are hidden by filters. Enable Show Status or Show Internal to inspect them.";
+      if (hiddenStatusCount > 0 || hiddenInternalCount > 0 || hiddenDeltaCount > 0) {
+        const parts: string[] = [];
+        if (hiddenDeltaCount > 0) {
+          parts.push(`${hiddenDeltaCount} delta events (aggregated in transcript)`);
+        }
+        if (hiddenStatusCount > 0) {
+          parts.push("status events (enable Show Status)");
+        }
+        if (hiddenInternalCount > 0) {
+          parts.push("internal events (enable Show Internal)");
+        }
+        placeholder.textContent = `Events hidden: ${parts.join(", ")}.`;
       } else {
         placeholder.textContent = "Awaiting events...";
       }
@@ -1832,7 +2036,8 @@ export class AppRenderer {
     showStatusEvents: boolean,
     hiddenStatusCount: number,
     showInternalEvents: boolean,
-    hiddenInternalCount: number
+    hiddenInternalCount: number,
+    hiddenDeltaCount: number
   ): void {
     this.dom.toggleStatusEventsButton.textContent = showStatusEvents
       ? "Hide Status"
@@ -1845,6 +2050,15 @@ export class AppRenderer {
       : hiddenInternalCount > 0
         ? `Show Internal (${hiddenInternalCount})`
         : "Show Internal";
+
+    // Update toggle button title to show delta info
+    if (hiddenDeltaCount > 0) {
+      this.dom.toggleStatusEventsButton.title = `${hiddenDeltaCount} delta events hidden (aggregated in transcript)`;
+      this.dom.toggleInternalEventsButton.title = `${hiddenDeltaCount} delta events hidden (aggregated in transcript)`;
+    } else {
+      this.dom.toggleStatusEventsButton.title = "";
+      this.dom.toggleInternalEventsButton.title = "";
+    }
   }
 
   private isNearTimelineBottom(): boolean {
@@ -1864,9 +2078,21 @@ export class AppRenderer {
   private getVisibleEvents(): TimelineEventEntry[] {
     const streamState = this.readState().stream;
     const allEvents = streamState.events.slice(-MAX_RENDERED_EVENTS);
+
+    // Filter out delta events (they're aggregated in transcript)
+    const deltaFilteredEvents = allEvents.filter((eventEntry) => {
+      const source = eventEntry.source?.toLowerCase() ?? "";
+      return !source.includes("delta") &&
+             !source.includes("/delta") &&
+             !source.endsWith("textdelta") &&
+             !source.endsWith("contentdelta") &&
+             !source.includes("message/delta") &&
+             !source.includes("reasoning/delta");
+    });
+
     const internalFilteredEvents = streamState.showInternalEvents
-      ? allEvents
-      : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+      ? deltaFilteredEvents
+      : deltaFilteredEvents.filter((eventEntry) => !eventEntry.isInternal);
     const statusFilteredEvents = streamState.showStatusEvents
       ? internalFilteredEvents
       : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
@@ -1878,12 +2104,25 @@ export class AppRenderer {
     visibleEvents: TimelineEventEntry[];
     hiddenInternalCount: number;
     hiddenStatusCount: number;
+    hiddenDeltaCount: number;
   } {
     const streamState = this.readState().stream;
     const allEvents = streamState.events.slice(-MAX_RENDERED_EVENTS);
+
+    // Filter out delta events (they're aggregated in transcript)
+    const deltaFilteredEvents = allEvents.filter((eventEntry) => {
+      const source = eventEntry.source?.toLowerCase() ?? "";
+      return !source.includes("delta") &&
+             !source.includes("/delta") &&
+             !source.endsWith("textdelta") &&
+             !source.endsWith("contentdelta") &&
+             !source.includes("message/delta") &&
+             !source.includes("reasoning/delta");
+    });
+
     const internalFilteredEvents = streamState.showInternalEvents
-      ? allEvents
-      : allEvents.filter((eventEntry) => !eventEntry.isInternal);
+      ? deltaFilteredEvents
+      : deltaFilteredEvents.filter((eventEntry) => !eventEntry.isInternal);
     const statusFilteredEvents = streamState.showStatusEvents
       ? internalFilteredEvents
       : internalFilteredEvents.filter((eventEntry) => eventEntry.category !== "status");
@@ -1891,7 +2130,8 @@ export class AppRenderer {
     return {
       visibleEvents: streamState.compactStatusBursts ? this.compactStatusBursts(statusFilteredEvents) : statusFilteredEvents,
       hiddenInternalCount: allEvents.length - internalFilteredEvents.length,
-      hiddenStatusCount: internalFilteredEvents.length - statusFilteredEvents.length
+      hiddenStatusCount: internalFilteredEvents.length - statusFilteredEvents.length,
+      hiddenDeltaCount: allEvents.length - deltaFilteredEvents.length
     };
   }
 
