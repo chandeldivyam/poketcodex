@@ -32,14 +32,26 @@ function createState(): AppState {
       selectedWorkspaceId: "workspace-1"
     },
     thread: {
-      threads: [
-        {
-          threadId: "thread-1",
-          title: "Thread One",
-          archived: false,
-          lastSeenAt: "2026-02-10T00:00:00.000Z"
-        }
-      ],
+      threadsByWorkspaceId: {
+        "workspace-1": [
+          {
+            threadId: "thread-1",
+            title: "Thread One",
+            archived: false,
+            lastSeenAt: "2026-02-10T00:00:00.000Z"
+          }
+        ]
+      },
+      threadHydrationByWorkspaceId: {
+        "workspace-1": "loaded"
+      },
+      threadCacheLoadedAtByWorkspaceId: {
+        "workspace-1": 1_739_145_600_000
+      },
+      expandedWorkspaceIds: ["workspace-1"],
+      threadWorkspaceByThreadId: {
+        "thread-1": "workspace-1"
+      },
       selectedThreadId: "thread-1",
       transcriptsByThreadId: {},
       runningByThreadId: {},
@@ -105,7 +117,8 @@ describe("state selectors", () => {
   it("falls back to id or None when selected thread metadata is missing", () => {
     const state = createState();
 
-    state.thread.threads = [];
+    state.thread.threadsByWorkspaceId["workspace-1"] = [];
+    state.thread.threadWorkspaceByThreadId = {};
     expect(selectSelectedThreadLabel(state)).toBe("thread-1");
 
     state.thread.selectedThreadId = null;

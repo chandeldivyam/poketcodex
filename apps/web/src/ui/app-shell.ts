@@ -13,16 +13,12 @@ export interface AppDomRefs {
   loginSubmitButton: HTMLButtonElement;
   workspaceForm: HTMLFormElement;
   workspaceAbsolutePathInput: HTMLInputElement;
-  workspaceDisplayNameInput: HTMLInputElement;
   workspaceSubmitButton: HTMLButtonElement;
-  workspaceList: HTMLElement;
+  workspaceTree: HTMLElement;
   openGitReviewButton: HTMLButtonElement;
   refreshThreadsButton: HTMLButtonElement;
   startThreadButton: HTMLButtonElement;
-  threadList: HTMLElement;
   conversationTitle: HTMLElement;
-  selectedWorkspaceLabel: HTMLElement;
-  selectedThreadLabel: HTMLElement;
   turnForm: HTMLFormElement;
   turnPromptInput: HTMLTextAreaElement;
   composerAttachImageButton: HTMLButtonElement;
@@ -71,26 +67,20 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     <main class="app-shell">
       <header class="app-header">
         <div class="header-main">
-          <div class="header-copy">
-            <p class="eyebrow">Workspace Runtime Console</p>
-            <h1>PocketCodex</h1>
-            <p class="subhead">Mobile Codex control plane</p>
-          </div>
-          <div class="header-actions">
-            <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
-            <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <line x1="3" y1="5" x2="17" y2="5"/>
-                <line x1="3" y1="10" x2="17" y2="10"/>
-                <line x1="3" y1="15" x2="17" y2="15"/>
-              </svg>
-            </button>
-          </div>
+          <h1>PocketCodex</h1>
+          <p class="header-context">Workspace runtime console</p>
         </div>
-        <div class="status-row" aria-label="Workspace controls">
-          <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh</button>
+        <div class="header-actions" aria-label="Session controls">
+          <span class="status-chip state-disconnected" data-role="socket-state">disconnected</span>
           <button class="button-secondary" type="button" data-role="reconnect-events">Reconnect</button>
           <button class="button-secondary" type="button" data-role="logout">Logout</button>
+          <button class="sidebar-toggle" type="button" data-role="sidebar-toggle" aria-label="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="3" y1="5" x2="17" y2="5"/>
+              <line x1="3" y1="10" x2="17" y2="10"/>
+              <line x1="3" y1="15" x2="17" y2="15"/>
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -116,73 +106,39 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
       <section class="app-body is-hidden" data-role="app-panels">
         <aside class="nav-column">
-          <div class="nav-mobile-tabs" role="tablist" aria-label="Sidebar sections">
-            <button
-              type="button"
-              class="nav-mobile-tab is-active"
-              role="tab"
-              aria-selected="true"
-              data-nav-tab="workspaces"
-            >
-              Workspaces
-            </button>
-            <button
-              type="button"
-              class="nav-mobile-tab"
-              role="tab"
-              aria-selected="false"
-              data-nav-tab="threads"
-              tabindex="-1"
-            >
-              Threads
-            </button>
-            <button
-              type="button"
-              class="nav-mobile-tab"
-              role="tab"
-              aria-selected="false"
-              data-nav-tab="settings"
-              tabindex="-1"
-            >
-              Settings
-            </button>
-          </div>
-
-          <section class="panel workspace-panel nav-panel is-active" data-nav-panel="workspaces">
+          <section class="panel workspace-tree-panel">
             <h2>Workspaces</h2>
+            <div class="workspace-tree" data-role="workspace-tree"></div>
+          </section>
+
+          <section class="panel utility-panel">
+            <h2>Actions</h2>
+            <div class="utility-actions utility-actions-primary">
+              <button type="button" data-role="start-thread">New Thread</button>
+            </div>
+            <div class="utility-actions utility-actions-secondary">
+              <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
+              <button class="button-secondary" type="button" data-role="refresh-workspaces">Refresh Workspaces</button>
+              <button class="button-secondary" type="button" data-role="open-git-review">Open Git Review</button>
+            </div>
+
             <details class="workspace-disclosure">
               <summary>Add workspace</summary>
               <form id="workspace-form">
                 <label>
                   Absolute Path
-                  <input type="text" name="absolutePath" placeholder="/home/divyam/projects/my-repo" required data-role="workspace-path" />
-                </label>
-                <label>
-                  Display Name
-                  <input type="text" name="displayName" placeholder="My Repo" data-role="workspace-display-name" />
+                  <input
+                    type="text"
+                    name="absolutePath"
+                    placeholder="/home/divyam/projects/my-repo"
+                    required
+                    data-role="workspace-path"
+                  />
                 </label>
                 <button type="submit" data-role="workspace-submit">Add Workspace</button>
               </form>
             </details>
-            <div class="workspace-review-actions">
-              <button class="button-secondary" type="button" data-role="open-git-review">
-                Open Git Review
-              </button>
-            </div>
-            <div class="list-container" data-role="workspace-list"></div>
-          </section>
 
-          <section class="panel thread-panel nav-panel" data-nav-panel="threads">
-            <h2>Threads</h2>
-            <div class="thread-actions">
-              <button type="button" data-role="start-thread">New Thread</button>
-              <button class="button-secondary" type="button" data-role="refresh-threads">Refresh Threads</button>
-            </div>
-            <div class="list-container" data-role="thread-list"></div>
-          </section>
-
-          <section class="panel settings-panel nav-panel" data-nav-panel="settings">
-            <h2>Settings</h2>
             <div class="settings-note">Runtime mode: YOLO (approvals off)</div>
             <div class="settings-form">
               <label class="settings-toggle">
@@ -203,109 +159,105 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
 
         <section class="main-column">
           <section class="conversation-panel" data-role="conversation-panel">
-          <div class="conversation-header">
-            <h2 data-role="conversation-title">Conversation</h2>
-            <div class="conversation-context">
-              <span class="context-chip">Workspace: <strong data-role="selected-workspace">None</strong></span>
-              <span class="context-chip">Thread: <strong data-role="selected-thread">None</strong></span>
+            <div class="conversation-header">
+              <h2 data-role="conversation-title">Conversation</h2>
             </div>
-          </div>
 
-          <div class="transcript-toolbar">
-            <span class="event-toolbar-label">Conversation</span>
-            <div class="event-toolbar-actions">
-              <button class="button-secondary is-hidden" type="button" data-role="transcript-jump-latest">
-                Jump to latest message
-              </button>
-            </div>
-          </div>
-
-          <div class="transcript-stream" data-role="transcript-stream">
-            <ol data-role="transcript-list">
-              <li class="empty">Select a thread to load history.</li>
-            </ol>
-          </div>
-
-          <form id="turn-form" class="composer-form">
-            <div class="composer-inline-row">
-              <input
-                class="is-hidden"
-                type="file"
-                accept="image/*"
-                multiple
-                data-role="composer-image-input"
-              />
-              <button
-                class="button-secondary composer-attach-icon"
-                type="button"
-                data-role="composer-attach-image"
-                aria-label="Add image"
-                title="Add image"
-              >
-                +
-              </button>
-              <label class="composer-inline-prompt">
-                Prompt
-                <textarea
-                  id="turn-prompt"
-                  name="prompt"
-                  rows="1"
-                  placeholder="Ask Codex..."
-                  aria-label="Prompt"
-                  data-role="turn-prompt"
-                ></textarea>
-              </label>
-              <button class="composer-send-fab" type="submit" data-role="start-turn" aria-label="Send">
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="22" y1="2" x2="11" y2="13"></line>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                </svg>
-              </button>
-              <button class="button-secondary composer-interrupt-mini" type="button" data-role="interrupt-turn">
-                Stop
-              </button>
-            </div>
-            <div class="composer-image-list is-hidden" data-role="composer-image-list"></div>
-            <div class="composer-meta-row">
-              <div class="turn-status" data-role="turn-status">
-                <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
-                <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
-              </div>
-              <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
-            </div>
-            <div class="background-terminal is-hidden" data-role="background-terminal-row">
-              <span class="background-terminal-chip">Background Terminal</span>
-              <span class="background-terminal-text" data-role="background-terminal-text">Idle</span>
-            </div>
-          </form>
-
-          <details class="events-disclosure">
-            <summary>Live runtime events</summary>
-            <div class="event-toolbar">
-              <span class="event-toolbar-label">Runtime stream controls</span>
+            <div class="transcript-toolbar">
+              <span class="event-toolbar-label">Conversation</span>
               <div class="event-toolbar-actions">
-                <button class="button-secondary" type="button" data-role="toggle-status-events">Show Status</button>
-                <button class="button-secondary" type="button" data-role="toggle-internal-events">Show Internal</button>
-                <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+                <button class="button-secondary is-hidden" type="button" data-role="transcript-jump-latest">
+                  Jump to latest message
+                </button>
               </div>
             </div>
 
-            <div class="event-stream" data-role="event-stream">
-              <ol data-role="event-list">
-                <li>Awaiting events...</li>
+            <div class="transcript-stream" data-role="transcript-stream">
+              <ol data-role="transcript-list">
+                <li class="empty">Select a thread to load history.</li>
               </ol>
             </div>
-          </details>
+
+            <form id="turn-form" class="composer-form">
+              <div class="composer-inline-row">
+                <input
+                  class="is-hidden"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  data-role="composer-image-input"
+                />
+                <button
+                  class="button-secondary composer-attach-icon"
+                  type="button"
+                  data-role="composer-attach-image"
+                  aria-label="Add image"
+                  title="Add image"
+                >
+                  +
+                </button>
+                <label class="composer-inline-prompt">
+                  Prompt
+                  <textarea
+                    id="turn-prompt"
+                    name="prompt"
+                    rows="1"
+                    placeholder="Ask Codex..."
+                    aria-label="Prompt"
+                    data-role="turn-prompt"
+                  ></textarea>
+                </label>
+                <button class="composer-send-fab" type="submit" data-role="start-turn" aria-label="Send">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+                <button class="button-secondary composer-interrupt-mini" type="button" data-role="interrupt-turn">
+                  Stop
+                </button>
+              </div>
+              <div class="composer-image-list is-hidden" data-role="composer-image-list"></div>
+              <div class="composer-meta-row">
+                <div class="turn-status" data-role="turn-status">
+                  <span class="turn-status-chip phase-idle" data-role="turn-status-chip">Idle</span>
+                  <span class="turn-status-text" data-role="turn-status-text">Ready to send</span>
+                </div>
+                <p class="turn-shortcuts">Cmd/Ctrl+Enter to send · Esc to interrupt</p>
+              </div>
+              <div class="background-terminal is-hidden" data-role="background-terminal-row">
+                <span class="background-terminal-chip">Background Terminal</span>
+                <span class="background-terminal-text" data-role="background-terminal-text">Idle</span>
+              </div>
+            </form>
+
+            <details class="events-disclosure">
+              <summary>Live runtime events</summary>
+              <div class="event-toolbar">
+                <span class="event-toolbar-label">Runtime stream controls</span>
+                <div class="event-toolbar-actions">
+                  <button class="button-secondary" type="button" data-role="toggle-status-events">Show Status</button>
+                  <button class="button-secondary" type="button" data-role="toggle-internal-events">Show Internal</button>
+                  <button class="button-secondary is-hidden" type="button" data-role="jump-latest">Jump to latest</button>
+                </div>
+              </div>
+
+              <div class="event-stream" data-role="event-stream">
+                <ol data-role="event-list">
+                  <li>Awaiting events...</li>
+                </ol>
+              </div>
+            </details>
           </section>
 
           <section class="git-review-panel is-hidden" data-role="git-review-panel">
@@ -344,27 +296,9 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     </main>
   `;
 
-  // Sidebar drawer toggle logic (mobile)
   const sidebarToggle = requireElement<HTMLButtonElement>(root, "[data-role='sidebar-toggle']");
   const sidebarOverlay = requireElement<HTMLElement>(root, "[data-role='sidebar-overlay']");
   const navColumn = requireElement<HTMLElement>(root, ".nav-column");
-  const navTabs = [...root.querySelectorAll<HTMLButtonElement>("[data-nav-tab]")];
-  const navPanels = [...root.querySelectorAll<HTMLElement>("[data-nav-panel]")];
-
-  const isDrawerViewport = (): boolean => window.matchMedia("(max-width: 899px)").matches;
-
-  const setActiveNavPanel = (panelId: string): void => {
-    for (const tab of navTabs) {
-      const isActive = tab.dataset.navTab === panelId;
-      tab.classList.toggle("is-active", isActive);
-      tab.setAttribute("aria-selected", isActive ? "true" : "false");
-      tab.tabIndex = isActive ? 0 : -1;
-    }
-
-    for (const panel of navPanels) {
-      panel.classList.toggle("is-active", panel.dataset.navPanel === panelId);
-    }
-  };
 
   const setSidebarOpen = (open: boolean): void => {
     navColumn.classList.toggle("is-open", open);
@@ -372,22 +306,9 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     root.classList.toggle("has-open-sidebar", open);
   };
 
-  const closeSidebar = () => {
+  const closeSidebar = (): void => {
     setSidebarOpen(false);
   };
-
-  setActiveNavPanel("workspaces");
-
-  for (const tab of navTabs) {
-    tab.addEventListener("click", () => {
-      const panelId = tab.dataset.navTab;
-      if (!panelId) {
-        return;
-      }
-
-      setActiveNavPanel(panelId);
-    });
-  }
 
   sidebarToggle.addEventListener("click", () => {
     const isOpen = !navColumn.classList.contains("is-open");
@@ -415,17 +336,9 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     drawerMediaQuery.addListener(handleDrawerMediaChange);
   }
 
-  // Keep thread selection fast on mobile: workspace taps switch sidebar focus to threads.
   navColumn.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
-    if (target.closest(".workspace-item")) {
-      if (isDrawerViewport()) {
-        setActiveNavPanel("threads");
-      }
-      return;
-    }
-
-    if (target.closest(".thread-item")) {
+    if (target.closest("button[data-action='thread-select']")) {
       closeSidebar();
     }
   });
@@ -445,16 +358,12 @@ export function createAppShell(root: HTMLDivElement): AppDomRefs {
     loginSubmitButton: requireElement<HTMLButtonElement>(root, "[data-role='login-submit']"),
     workspaceForm: requireElement<HTMLFormElement>(root, "#workspace-form"),
     workspaceAbsolutePathInput: requireElement<HTMLInputElement>(root, "[data-role='workspace-path']"),
-    workspaceDisplayNameInput: requireElement<HTMLInputElement>(root, "[data-role='workspace-display-name']"),
     workspaceSubmitButton: requireElement<HTMLButtonElement>(root, "[data-role='workspace-submit']"),
-    workspaceList: requireElement<HTMLElement>(root, "[data-role='workspace-list']"),
+    workspaceTree: requireElement<HTMLElement>(root, "[data-role='workspace-tree']"),
     openGitReviewButton: requireElement<HTMLButtonElement>(root, "[data-role='open-git-review']"),
     refreshThreadsButton: requireElement<HTMLButtonElement>(root, "[data-role='refresh-threads']"),
     startThreadButton: requireElement<HTMLButtonElement>(root, "[data-role='start-thread']"),
-    threadList: requireElement<HTMLElement>(root, "[data-role='thread-list']"),
     conversationTitle: requireElement<HTMLElement>(root, "[data-role='conversation-title']"),
-    selectedWorkspaceLabel: requireElement<HTMLElement>(root, "[data-role='selected-workspace']"),
-    selectedThreadLabel: requireElement<HTMLElement>(root, "[data-role='selected-thread']"),
     turnForm: requireElement<HTMLFormElement>(root, "#turn-form"),
     turnPromptInput: requireElement<HTMLTextAreaElement>(root, "[data-role='turn-prompt']"),
     composerAttachImageButton: requireElement<HTMLButtonElement>(root, "[data-role='composer-attach-image']"),

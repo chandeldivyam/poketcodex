@@ -16,12 +16,18 @@ export interface WorkspaceState {
 }
 
 export interface ThreadState {
-  threads: ThreadListItem[];
+  threadsByWorkspaceId: Record<string, ThreadListItem[]>;
+  threadHydrationByWorkspaceId: Record<string, ThreadListHydration>;
+  threadCacheLoadedAtByWorkspaceId: Record<string, number>;
+  expandedWorkspaceIds: string[];
+  threadWorkspaceByThreadId: Record<string, string>;
   selectedThreadId: string | null;
   transcriptsByThreadId: Record<string, ThreadTranscriptState>;
   runningByThreadId: Record<string, boolean>;
   unreadByThreadId: Record<string, boolean>;
 }
+
+export type ThreadListHydration = "idle" | "loading" | "loaded" | "error";
 
 export interface TranscriptMessageItem {
   id: string;

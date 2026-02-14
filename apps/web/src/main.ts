@@ -35,6 +35,11 @@ import type {
 } from "./state/app-state.js";
 import { selectActiveWorkspace } from "./state/selectors.js";
 import { AppStore } from "./state/store.js";
+import {
+  resolveThreadSelectionForWorkspace,
+  setWorkspaceExpansionState,
+  shouldRefreshThreadCache
+} from "./state/thread-cache.js";
 import { AppRenderer } from "./ui/app-renderer.js";
 import { createAppShell } from "./ui/app-shell.js";
 import "./styles.css";
@@ -56,6 +61,7 @@ const DRAFT_IMAGE_JPEG_INITIAL_QUALITY = 0.84;
 const DRAFT_IMAGE_JPEG_MIN_QUALITY = 0.55;
 const TURN_START_TIMEOUT_MS = 60_000;
 const MAX_TURN_REQUEST_BODY_BYTES = 7_500_000;
+const THREAD_CACHE_MAX_AGE_MS = 120_000;
 
 const rootElement = document.querySelector<HTMLDivElement>("#app");
 
@@ -506,7 +512,11 @@ const initialState: AppState = {
     selectedWorkspaceId: readStorageValue(STORAGE_SELECTED_WORKSPACE_KEY)
   },
   thread: {
-    threads: [],
+    threadsByWorkspaceId: {},
+    threadHydrationByWorkspaceId: {},
+    threadCacheLoadedAtByWorkspaceId: {},
+    expandedWorkspaceIds: [],
+    threadWorkspaceByThreadId: {},
     selectedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY),
     transcriptsByThreadId: {},
     runningByThreadId: {},
@@ -646,22 +656,124 @@ function setSelectedThreadId(threadId: string | null): void {
   });
 }
 
-function syncThreadMapsWithList(threads: ThreadListItem[]): void {
+function setWorkspaceExpanded(workspaceId: string, expanded: boolean): void {
   store.updateSlice("thread", (thread) => {
-    const nextTranscriptsByThreadId: Record<string, ThreadTranscriptState> = {};
-    const nextRunningByThreadId: Record<string, boolean> = {};
-    const nextUnreadByThreadId: Record<string, boolean> = {};
-
-    for (const threadItem of threads) {
-      nextTranscriptsByThreadId[threadItem.threadId] =
-        thread.transcriptsByThreadId[threadItem.threadId] ?? createDefaultThreadTranscriptState();
-      nextRunningByThreadId[threadItem.threadId] = thread.runningByThreadId[threadItem.threadId] ?? false;
-      nextUnreadByThreadId[threadItem.threadId] = thread.unreadByThreadId[threadItem.threadId] ?? false;
+    const nextExpandedWorkspaceIds = setWorkspaceExpansionState(thread.expandedWorkspaceIds, workspaceId, expanded);
+    const expandedUnchanged =
+      nextExpandedWorkspaceIds.length === thread.expandedWorkspaceIds.length &&
+      nextExpandedWorkspaceIds.every((entry, index) => thread.expandedWorkspaceIds[index] === entry);
+    if (expandedUnchanged) {
+      return thread;
     }
 
     return {
       ...thread,
-      threads,
+      expandedWorkspaceIds: nextExpandedWorkspaceIds
+    };
+  });
+}
+
+function isThreadCacheFresh(workspaceId: string): boolean {
+  const threadState = store.getState().thread;
+  return !shouldRefreshThreadCache({
+    hydration: threadState.threadHydrationByWorkspaceId[workspaceId],
+    loadedAtMs: threadState.threadCacheLoadedAtByWorkspaceId[workspaceId],
+    nowMs: Date.now(),
+    maxAgeMs: THREAD_CACHE_MAX_AGE_MS
+  });
+}
+
+function syncThreadWorkspaceRoster(workspaces: WorkspaceRecord[]): void {
+  const validWorkspaceIds = new Set(workspaces.map((workspace) => workspace.workspaceId));
+
+  const filterByWorkspace = <TValue>(record: Record<string, TValue>): Record<string, TValue> => {
+    const nextRecord: Record<string, TValue> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (validWorkspaceIds.has(key)) {
+        nextRecord[key] = value;
+      }
+    }
+
+    return nextRecord;
+  };
+
+  store.updateSlice("thread", (thread) => {
+    const nextThreadsByWorkspaceId = filterByWorkspace(thread.threadsByWorkspaceId);
+    const nextThreadHydrationByWorkspaceId = filterByWorkspace(thread.threadHydrationByWorkspaceId);
+    const nextThreadCacheLoadedAtByWorkspaceId = filterByWorkspace(thread.threadCacheLoadedAtByWorkspaceId);
+    const nextExpandedWorkspaceIds = thread.expandedWorkspaceIds.filter((workspaceId) => validWorkspaceIds.has(workspaceId));
+
+    for (const workspace of workspaces) {
+      nextThreadHydrationByWorkspaceId[workspace.workspaceId] ??= "idle";
+    }
+
+    const nextThreadWorkspaceByThreadId: Record<string, string> = {};
+    for (const [threadId, workspaceId] of Object.entries(thread.threadWorkspaceByThreadId)) {
+      if (validWorkspaceIds.has(workspaceId)) {
+        nextThreadWorkspaceByThreadId[threadId] = workspaceId;
+      }
+    }
+
+    return {
+      ...thread,
+      threadsByWorkspaceId: nextThreadsByWorkspaceId,
+      threadHydrationByWorkspaceId: nextThreadHydrationByWorkspaceId,
+      threadCacheLoadedAtByWorkspaceId: nextThreadCacheLoadedAtByWorkspaceId,
+      expandedWorkspaceIds: nextExpandedWorkspaceIds,
+      threadWorkspaceByThreadId: nextThreadWorkspaceByThreadId
+    };
+  });
+}
+
+function syncThreadMapsWithWorkspaceList(
+  workspaceId: string,
+  threads: ThreadListItem[],
+  options: {
+    hydration: "loading" | "loaded" | "error";
+    loadedAtMs?: number;
+  }
+): void {
+  store.updateSlice("thread", (thread) => {
+    const nextTranscriptsByThreadId = { ...thread.transcriptsByThreadId };
+    const nextRunningByThreadId = { ...thread.runningByThreadId };
+    const nextUnreadByThreadId = { ...thread.unreadByThreadId };
+    const nextThreadWorkspaceByThreadId = { ...thread.threadWorkspaceByThreadId };
+    const nextThreadsByWorkspaceId = {
+      ...thread.threadsByWorkspaceId,
+      [workspaceId]: threads
+    };
+
+    const previousThreadIds = new Set((thread.threadsByWorkspaceId[workspaceId] ?? []).map((threadItem) => threadItem.threadId));
+
+    for (const threadItem of threads) {
+      nextTranscriptsByThreadId[threadItem.threadId] ??= createDefaultThreadTranscriptState();
+      nextRunningByThreadId[threadItem.threadId] ??= false;
+      nextUnreadByThreadId[threadItem.threadId] ??= false;
+      nextThreadWorkspaceByThreadId[threadItem.threadId] = workspaceId;
+      previousThreadIds.delete(threadItem.threadId);
+    }
+
+    for (const staleThreadId of previousThreadIds) {
+      if (nextThreadWorkspaceByThreadId[staleThreadId] === workspaceId) {
+        delete nextThreadWorkspaceByThreadId[staleThreadId];
+      }
+    }
+
+    return {
+      ...thread,
+      threadsByWorkspaceId: nextThreadsByWorkspaceId,
+      threadHydrationByWorkspaceId: {
+        ...thread.threadHydrationByWorkspaceId,
+        [workspaceId]: options.hydration
+      },
+      threadCacheLoadedAtByWorkspaceId:
+        options.loadedAtMs !== undefined
+          ? {
+              ...thread.threadCacheLoadedAtByWorkspaceId,
+              [workspaceId]: options.loadedAtMs
+            }
+          : thread.threadCacheLoadedAtByWorkspaceId,
+      threadWorkspaceByThreadId: nextThreadWorkspaceByThreadId,
       transcriptsByThreadId: nextTranscriptsByThreadId,
       runningByThreadId: nextRunningByThreadId,
       unreadByThreadId: nextUnreadByThreadId
@@ -669,9 +781,10 @@ function syncThreadMapsWithList(threads: ThreadListItem[]): void {
   });
 }
 
-function upsertThreadPlaceholder(threadId: string): void {
+function upsertThreadPlaceholder(workspaceId: string, threadId: string): void {
   store.updateSlice("thread", (thread) => {
-    const existingIndex = thread.threads.findIndex((threadEntry) => threadEntry.threadId === threadId);
+    const workspaceThreads = thread.threadsByWorkspaceId[workspaceId] ?? [];
+    const existingIndex = workspaceThreads.findIndex((threadEntry) => threadEntry.threadId === threadId);
     if (existingIndex >= 0) {
       return thread;
     }
@@ -686,7 +799,22 @@ function upsertThreadPlaceholder(threadId: string): void {
 
     return {
       ...thread,
-      threads: [placeholder, ...thread.threads],
+      threadsByWorkspaceId: {
+        ...thread.threadsByWorkspaceId,
+        [workspaceId]: [placeholder, ...workspaceThreads]
+      },
+      threadHydrationByWorkspaceId: {
+        ...thread.threadHydrationByWorkspaceId,
+        [workspaceId]: "loaded"
+      },
+      threadCacheLoadedAtByWorkspaceId: {
+        ...thread.threadCacheLoadedAtByWorkspaceId,
+        [workspaceId]: Date.now()
+      },
+      threadWorkspaceByThreadId: {
+        ...thread.threadWorkspaceByThreadId,
+        [threadId]: workspaceId
+      },
       transcriptsByThreadId: {
         ...thread.transcriptsByThreadId,
         [threadId]: thread.transcriptsByThreadId[threadId] ?? createDefaultThreadTranscriptState()
@@ -1345,6 +1473,13 @@ function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unk
     const isSelectedThread = thread.selectedThreadId === threadId;
     const hasTranscriptEntry = thread.transcriptsByThreadId[threadId] !== undefined;
     const currentTranscript = thread.transcriptsByThreadId[threadId] ?? createDefaultThreadTranscriptState();
+    const hasThreadWorkspaceMapping = thread.threadWorkspaceByThreadId[threadId] !== undefined;
+    const nextThreadWorkspaceByThreadId = hasThreadWorkspaceMapping
+      ? thread.threadWorkspaceByThreadId
+      : {
+          ...thread.threadWorkspaceByThreadId,
+          [threadId]: workspaceId
+        };
 
     let nextTranscript = currentTranscript;
     let transcriptChanged = false;
@@ -1380,12 +1515,13 @@ function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unk
         setUnread(true);
       }
 
-      if (!runningChanged && !unreadChanged) {
+      if (!runningChanged && !unreadChanged && hasThreadWorkspaceMapping) {
         return thread;
       }
 
       return {
         ...thread,
+        threadWorkspaceByThreadId: nextThreadWorkspaceByThreadId,
         ...(runningChanged
           ? {
               runningByThreadId: {
@@ -1511,12 +1647,13 @@ function applyRuntimeNotificationToThreadState(workspaceId: string, payload: unk
       }
     }
 
-    if (!runningChanged && !unreadChanged && !transcriptChanged && hasTranscriptEntry) {
+    if (!runningChanged && !unreadChanged && !transcriptChanged && hasTranscriptEntry && hasThreadWorkspaceMapping) {
       return thread;
     }
 
     return {
       ...thread,
+      threadWorkspaceByThreadId: nextThreadWorkspaceByThreadId,
       transcriptsByThreadId:
         transcriptChanged || !hasTranscriptEntry
           ? {
@@ -1602,7 +1739,7 @@ async function ensureThreadForTurn(workspaceId: string, csrfToken: string): Prom
     throw new Error("Start thread failed: backend did not return threadId");
   }
 
-  upsertThreadPlaceholder(threadId);
+  upsertThreadPlaceholder(workspaceId, threadId);
   setSelectedThreadId(threadId);
   appendEvent(`Thread started: ${threadId}`, "system");
 
@@ -1666,7 +1803,14 @@ function buildRetryWorkspacesAction(): RetryAction {
   };
 }
 
-function buildRetryThreadsAction(workspaceId: string): RetryAction {
+function buildRetryThreadsAction(
+  workspaceId: string,
+  options: {
+    selectThread?: boolean;
+    hydrateSelectedThread?: boolean;
+    force?: boolean;
+  } = {}
+): RetryAction {
   return {
     label: "Retry Refresh Threads",
     run: async () => {
@@ -1674,13 +1818,19 @@ function buildRetryThreadsAction(workspaceId: string): RetryAction {
       setBusy(true);
 
       try {
-        await loadThreads(workspaceId);
+        const selectThread = options.selectThread ?? true;
+        const hydrateSelectedThread = options.hydrateSelectedThread ?? selectThread;
+        await loadThreads(workspaceId, {
+          force: options.force ?? true,
+          selectThread,
+          hydrateSelectedThread
+        });
       } catch (error: unknown) {
         handleApiError(error, {
           action: "Refresh threads",
           context: describeWorkspaceContext(workspaceId),
           nextStep: "Use retry to attempt thread refresh again",
-          retryAction: buildRetryThreadsAction(workspaceId)
+          retryAction: buildRetryThreadsAction(workspaceId, options)
         });
       } finally {
         setBusy(false);
@@ -1697,7 +1847,11 @@ function buildRetryWorkspaceSwitchAction(workspaceId: string): RetryAction {
       setBusy(true);
 
       try {
-        await loadThreads(workspaceId);
+        await loadThreads(workspaceId, {
+          force: true,
+          selectThread: true,
+          hydrateSelectedThread: true
+        });
         connectWorkspaceEvents(workspaceId, true);
       } catch (error: unknown) {
         handleApiError(error, {
@@ -1759,18 +1913,15 @@ function resolveSelectedWorkspaceId(workspaces: WorkspaceRecord[]): string | nul
   return workspaces[0]?.workspaceId ?? null;
 }
 
-function resolveSelectedThreadId(threads: ThreadListItem[]): string | null {
-  const selectedThreadId = store.getState().thread.selectedThreadId;
-  if (selectedThreadId && threads.some((thread) => thread.threadId === selectedThreadId)) {
-    return selectedThreadId;
-  }
-
-  const storedThreadId = readStorageValue(STORAGE_SELECTED_THREAD_KEY);
-  if (storedThreadId && threads.some((thread) => thread.threadId === storedThreadId)) {
-    return storedThreadId;
-  }
-
-  return threads[0]?.threadId ?? null;
+function resolveSelectedThreadIdForWorkspace(workspaceId: string, threads: ThreadListItem[]): string | null {
+  const threadState = store.getState().thread;
+  return resolveThreadSelectionForWorkspace({
+    workspaceId,
+    threads,
+    selectedThreadId: threadState.selectedThreadId,
+    storedThreadId: readStorageValue(STORAGE_SELECTED_THREAD_KEY),
+    threadWorkspaceByThreadId: threadState.threadWorkspaceByThreadId
+  });
 }
 
 async function loadWorkspaces(): Promise<void> {
@@ -1779,13 +1930,18 @@ async function loadWorkspaces(): Promise<void> {
   store.patchSlice("workspace", {
     workspaces: response.workspaces
   });
+  syncThreadWorkspaceRoster(response.workspaces);
 
   const nextWorkspaceId = resolveSelectedWorkspaceId(response.workspaces);
   setSelectedWorkspaceId(nextWorkspaceId);
 
   if (nextWorkspaceId) {
+    setWorkspaceExpanded(nextWorkspaceId, true);
     resetGitReviewState(nextWorkspaceId);
-    await loadThreads(nextWorkspaceId);
+    await loadThreads(nextWorkspaceId, {
+      selectThread: true,
+      hydrateSelectedThread: true
+    });
     connectWorkspaceEvents(nextWorkspaceId);
     void refreshGitStatus(nextWorkspaceId, {
       autoSelectFirstFile: false
@@ -1794,7 +1950,11 @@ async function loadWorkspaces(): Promise<void> {
   }
 
   store.patchSlice("thread", {
-    threads: [],
+    threadsByWorkspaceId: {},
+    threadHydrationByWorkspaceId: {},
+    threadCacheLoadedAtByWorkspaceId: {},
+    expandedWorkspaceIds: [],
+    threadWorkspaceByThreadId: {},
     selectedThreadId: null,
     transcriptsByThreadId: {},
     runningByThreadId: {},
@@ -1806,27 +1966,77 @@ async function loadWorkspaces(): Promise<void> {
   disconnectWorkspaceEvents();
 }
 
-async function loadThreads(workspaceId: string): Promise<void> {
-  const response = await apiClient.listThreads(workspaceId);
+async function loadThreads(
+  workspaceId: string,
+  options: {
+    force?: boolean;
+    selectThread?: boolean;
+    hydrateSelectedThread?: boolean;
+  } = {}
+): Promise<void> {
+  const shouldSelectThread = options.selectThread ?? workspaceId === store.getState().workspace.selectedWorkspaceId;
+  const shouldHydrateSelectedThread = options.hydrateSelectedThread ?? shouldSelectThread;
+  if (!options.force && isThreadCacheFresh(workspaceId)) {
+    const cachedThreads = store.getState().thread.threadsByWorkspaceId[workspaceId] ?? [];
+    if (!shouldSelectThread) {
+      return;
+    }
 
-  if (workspaceId !== store.getState().workspace.selectedWorkspaceId) {
+    const nextThreadId = resolveSelectedThreadIdForWorkspace(workspaceId, cachedThreads);
+    setSelectedThreadId(nextThreadId);
+    restoreDraftPrompt(workspaceId, nextThreadId);
+
+    if (shouldHydrateSelectedThread && nextThreadId && workspaceId === store.getState().workspace.selectedWorkspaceId) {
+      try {
+        await hydrateThreadTranscript(workspaceId, nextThreadId);
+      } catch (error: unknown) {
+        appendEvent(`Thread history load failed (${nextThreadId}): ${describeError(error)}`, "error", {
+          category: "error"
+        });
+      }
+    }
+
     return;
   }
 
-  const threads = normalizeThreadList(response);
-  syncThreadMapsWithList(threads);
+  syncThreadMapsWithWorkspaceList(workspaceId, store.getState().thread.threadsByWorkspaceId[workspaceId] ?? [], {
+    hydration: "loading"
+  });
 
-  const nextThreadId = resolveSelectedThreadId(threads);
+  let response: Awaited<ReturnType<typeof apiClient.listThreads>>;
+  try {
+    response = await apiClient.listThreads(workspaceId);
+  } catch (error: unknown) {
+    syncThreadMapsWithWorkspaceList(workspaceId, store.getState().thread.threadsByWorkspaceId[workspaceId] ?? [], {
+      hydration: "error"
+    });
+    throw error;
+  }
+
+  const threads = normalizeThreadList(response);
+  syncThreadMapsWithWorkspaceList(workspaceId, threads, {
+    hydration: "loaded",
+    loadedAtMs: Date.now()
+  });
+
+  if (!shouldSelectThread) {
+    return;
+  }
+
+  const nextThreadId = resolveSelectedThreadIdForWorkspace(workspaceId, threads);
   setSelectedThreadId(nextThreadId);
   restoreDraftPrompt(workspaceId, nextThreadId);
 
-  if (!nextThreadId) {
+  if (!nextThreadId || !shouldHydrateSelectedThread || workspaceId !== store.getState().workspace.selectedWorkspaceId) {
     return;
   }
 
   try {
     await hydrateThreadTranscript(workspaceId, nextThreadId);
   } catch (error: unknown) {
+    syncThreadMapsWithWorkspaceList(workspaceId, threads, {
+      hydration: "error"
+    });
     appendEvent(`Thread history load failed (${nextThreadId}): ${describeError(error)}`, "error", {
       category: "error"
     });
@@ -2183,7 +2393,11 @@ async function handleLogout(): Promise<void> {
       selectedWorkspaceId: null
     },
     thread: {
-      threads: [],
+      threadsByWorkspaceId: {},
+      threadHydrationByWorkspaceId: {},
+      threadCacheLoadedAtByWorkspaceId: {},
+      expandedWorkspaceIds: [],
+      threadWorkspaceByThreadId: {},
       selectedThreadId: null,
       transcriptsByThreadId: {},
       runningByThreadId: {},
@@ -2230,8 +2444,6 @@ async function handleWorkspaceCreate(event: Event): Promise<void> {
   const formData = new FormData(dom.workspaceForm);
 
   const absolutePath = formData.get("absolutePath");
-  const displayName = formData.get("displayName");
-
   if (typeof absolutePath !== "string" || absolutePath.trim().length === 0) {
     setError("Workspace path is required");
     return;
@@ -2243,10 +2455,7 @@ async function handleWorkspaceCreate(event: Event): Promise<void> {
   try {
     const csrfToken = requireCsrfToken();
     const response = await apiClient.createWorkspace(csrfToken, {
-      absolutePath: absolutePath.trim(),
-      ...(typeof displayName === "string" && displayName.trim().length > 0
-        ? { displayName: displayName.trim() }
-        : {})
+      absolutePath: absolutePath.trim()
     });
 
     setSelectedWorkspaceId(response.workspace.workspaceId);
@@ -2281,12 +2490,16 @@ async function handleStartThread(): Promise<void> {
     const threadId = extractThreadIdFromTurnResult(result);
 
     if (threadId) {
-      upsertThreadPlaceholder(threadId);
+      upsertThreadPlaceholder(workspace.workspaceId, threadId);
       setSelectedThreadId(threadId);
       appendEvent(`Thread started: ${threadId}`, "system");
     }
 
-    await loadThreads(workspace.workspaceId);
+    await loadThreads(workspace.workspaceId, {
+      force: true,
+      selectThread: true,
+      hydrateSelectedThread: true
+    });
   } catch (error: unknown) {
     handleApiError(error, {
       action: "Start thread",
@@ -2396,7 +2609,11 @@ async function handleTurnSubmit(event: Event): Promise<void> {
       draftImages: []
     });
 
-    await loadThreads(workspace.workspaceId);
+    await loadThreads(workspace.workspaceId, {
+      force: true,
+      selectThread: true,
+      hydrateSelectedThread: true
+    });
     void refreshGitStatus(workspace.workspaceId, {
       autoSelectFirstFile: store.getState().gitReview.active
     });
@@ -2537,20 +2754,9 @@ function handleReconnectEvents(): void {
   }
 }
 
-function handleWorkspaceSelection(workspaceId: string): void {
-  if (workspaceId === store.getState().workspace.selectedWorkspaceId) {
-    return;
-  }
-
+function activateWorkspaceContext(workspaceId: string): void {
   persistCurrentDraftPrompt();
   setSelectedWorkspaceId(workspaceId);
-  store.patchSlice("thread", {
-    threads: [],
-    selectedThreadId: null,
-    transcriptsByThreadId: {},
-    runningByThreadId: {},
-    unreadByThreadId: {}
-  });
   setSelectedThreadId(null);
   restoreDraftPrompt(workspaceId, null);
   resetGitReviewState(workspaceId);
@@ -2564,10 +2770,23 @@ function handleWorkspaceSelection(workspaceId: string): void {
     turnStartedAtMs: null
   });
   eventSequence = 0;
+}
 
-  void loadThreads(workspaceId)
+function handleWorkspaceSelection(workspaceId: string): void {
+  const currentWorkspaceId = store.getState().workspace.selectedWorkspaceId;
+  const switchedWorkspace = workspaceId !== currentWorkspaceId;
+  if (switchedWorkspace) {
+    activateWorkspaceContext(workspaceId);
+  }
+
+  setWorkspaceExpanded(workspaceId, true);
+
+  void loadThreads(workspaceId, {
+    selectThread: true,
+    hydrateSelectedThread: true
+  })
     .then(() => {
-      connectWorkspaceEvents(workspaceId, true);
+      connectWorkspaceEvents(workspaceId, switchedWorkspace);
       void refreshGitStatus(workspaceId, {
         autoSelectFirstFile: false
       });
@@ -2582,25 +2801,49 @@ function handleWorkspaceSelection(workspaceId: string): void {
     });
 }
 
-function handleThreadSelection(threadId: string): void {
+function handleThreadSelection(threadId: string, workspaceId?: string): void {
   const existingState = store.getState();
+  const threadWorkspaceId =
+    workspaceId ??
+    existingState.thread.threadWorkspaceByThreadId[threadId] ??
+    existingState.workspace.selectedWorkspaceId;
+  if (!threadWorkspaceId) {
+    return;
+  }
+
+  const switchedWorkspace = threadWorkspaceId !== existingState.workspace.selectedWorkspaceId;
   const isAlreadySelected = threadId === existingState.thread.selectedThreadId;
   const existingHydration = existingState.thread.transcriptsByThreadId[threadId]?.hydration;
-  if (isAlreadySelected && existingHydration !== "error") {
+  if (!switchedWorkspace && isAlreadySelected && existingHydration !== "error") {
     return;
   }
 
-  const selectedWorkspaceId = existingState.workspace.selectedWorkspaceId;
-  persistCurrentDraftPrompt();
+  if (switchedWorkspace) {
+    activateWorkspaceContext(threadWorkspaceId);
+    connectWorkspaceEvents(threadWorkspaceId, true);
+    void refreshGitStatus(threadWorkspaceId, {
+      autoSelectFirstFile: store.getState().gitReview.active
+    });
+    void loadThreads(threadWorkspaceId, {
+      selectThread: false,
+      hydrateSelectedThread: false
+    }).catch((error: unknown) => {
+      handleApiError(error, {
+        action: "Load workspace threads",
+        context: describeWorkspaceContext(threadWorkspaceId),
+        nextStep: "Expand the workspace again to retry loading threads"
+      });
+    });
+  } else {
+    persistCurrentDraftPrompt();
+  }
+
+  setWorkspaceExpanded(threadWorkspaceId, true);
   setSelectedThreadId(threadId);
-  restoreDraftPrompt(selectedWorkspaceId, threadId);
+  restoreDraftPrompt(threadWorkspaceId, threadId);
   appendEvent(`Selected thread: ${threadId}`, "system");
 
-  if (!selectedWorkspaceId) {
-    return;
-  }
-
-  void hydrateThreadTranscript(selectedWorkspaceId, threadId).catch((error: unknown) => {
+  void hydrateThreadTranscript(threadWorkspaceId, threadId).catch((error: unknown) => {
     appendEvent(`Thread history load failed (${threadId}): ${describeError(error)}`, "error", {
       category: "error"
     });
@@ -2735,11 +2978,41 @@ function attachHandlers(): void {
     }
   });
 
-  dom.workspaceList.addEventListener("click", (event) => {
+  dom.workspaceTree.addEventListener("click", (event) => {
     const target = event.target as HTMLElement;
-    const button = target.closest<HTMLButtonElement>("button[data-workspace-id]");
+    const toggleButton = target.closest<HTMLButtonElement>("button[data-action='workspace-toggle']");
+    if (toggleButton?.dataset.workspaceId) {
+      const workspaceId = toggleButton.dataset.workspaceId;
+      const expanded = toggleButton.dataset.expanded === "true";
+      setWorkspaceExpanded(workspaceId, !expanded);
+      if (!expanded) {
+        void loadThreads(workspaceId, {
+          selectThread: false,
+          hydrateSelectedThread: false
+        }).catch((error: unknown) => {
+          handleApiError(error, {
+            action: "Expand workspace",
+            context: describeWorkspaceContext(workspaceId),
+            nextStep: "Retry expanding this workspace",
+            retryAction: buildRetryThreadsAction(workspaceId, {
+              selectThread: false,
+              hydrateSelectedThread: false,
+              force: true
+            })
+          });
+        });
+      }
+      return;
+    }
 
-    const workspaceId = button?.dataset.workspaceId;
+    const threadButton = target.closest<HTMLButtonElement>("button[data-action='thread-select']");
+    if (threadButton?.dataset.threadId) {
+      handleThreadSelection(threadButton.dataset.threadId, threadButton.dataset.workspaceId);
+      return;
+    }
+
+    const workspaceButton = target.closest<HTMLButtonElement>("button[data-action='workspace-select']");
+    const workspaceId = workspaceButton?.dataset.workspaceId;
     if (!workspaceId) {
       return;
     }
@@ -2787,18 +3060,6 @@ function attachHandlers(): void {
     void refreshGitDiff(workspaceId, relativePath);
   });
 
-  dom.threadList.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement;
-    const button = target.closest<HTMLButtonElement>("button[data-thread-id]");
-
-    const threadId = button?.dataset.threadId;
-    if (!threadId) {
-      return;
-    }
-
-    handleThreadSelection(threadId);
-  });
-
   dom.refreshWorkspacesButton.addEventListener("click", () => {
     void loadWorkspaces().catch((error: unknown) => {
       handleApiError(error, {
@@ -2843,7 +3104,11 @@ function attachHandlers(): void {
       return;
     }
 
-    void loadThreads(selectedWorkspaceId)
+    void loadThreads(selectedWorkspaceId, {
+      force: true,
+      selectThread: true,
+      hydrateSelectedThread: true
+    })
       .then(() => {
         void refreshGitStatus(selectedWorkspaceId, {
           autoSelectFirstFile: store.getState().gitReview.active

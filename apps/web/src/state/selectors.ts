@@ -25,7 +25,19 @@ export function selectSelectedThread(state: AppState): ThreadListItem | null {
     return null;
   }
 
-  return state.thread.threads.find((thread) => thread.threadId === selectedThreadId) ?? null;
+  const workspaceId = state.thread.threadWorkspaceByThreadId[selectedThreadId];
+  if (workspaceId) {
+    return state.thread.threadsByWorkspaceId[workspaceId]?.find((thread) => thread.threadId === selectedThreadId) ?? null;
+  }
+
+  for (const threadList of Object.values(state.thread.threadsByWorkspaceId)) {
+    const selectedThread = threadList.find((thread) => thread.threadId === selectedThreadId);
+    if (selectedThread) {
+      return selectedThread;
+    }
+  }
+
+  return null;
 }
 
 export function selectSelectedThreadLabel(state: AppState): string {

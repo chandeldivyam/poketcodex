@@ -17,7 +17,11 @@ function createInitialState(): AppState {
       selectedWorkspaceId: null
     },
     thread: {
-      threads: [],
+      threadsByWorkspaceId: {},
+      threadHydrationByWorkspaceId: {},
+      threadCacheLoadedAtByWorkspaceId: {},
+      expandedWorkspaceIds: [],
+      threadWorkspaceByThreadId: {},
       selectedThreadId: null,
       transcriptsByThreadId: {},
       runningByThreadId: {},
@@ -76,7 +80,11 @@ describe("AppStore", () => {
         selectedWorkspaceId: "workspace-1"
       },
       thread: {
-        threads: [],
+        threadsByWorkspaceId: {},
+        threadHydrationByWorkspaceId: {},
+        threadCacheLoadedAtByWorkspaceId: {},
+        expandedWorkspaceIds: [],
+        threadWorkspaceByThreadId: {},
         selectedThreadId: null,
         transcriptsByThreadId: {},
         runningByThreadId: {},
