@@ -885,6 +885,9 @@ export class AppRenderer {
       const titleRow = document.createElement("div");
       titleRow.className = "list-item-title-row";
 
+      const rightMeta = document.createElement("span");
+      rightMeta.className = "list-item-right-meta";
+
       const badgeStack = document.createElement("span");
       badgeStack.className = "list-item-badge-stack";
 
@@ -908,18 +911,20 @@ export class AppRenderer {
         badgeStack.append(createNavigationStateChip("error", "Needs Attention"));
       }
 
-      titleRow.append(title, badgeStack);
+      const updatedAt = document.createElement("span");
+      updatedAt.className = "list-item-time";
+      const updatedLabel = formatRelativeTimestamp(workspace.updatedAt);
+      updatedAt.textContent = updatedLabel ?? "new";
+
+      rightMeta.append(updatedAt, badgeStack);
+      titleRow.append(title, rightMeta);
 
       const path = document.createElement("span");
       path.className = "list-item-path";
-      path.textContent = workspace.absolutePath;
+      path.textContent = truncateInlineText(workspace.absolutePath, 58);
+      path.title = workspace.absolutePath;
 
-      const metadata = document.createElement("span");
-      metadata.className = "list-item-meta";
-      const updatedLabel = formatRelativeTimestamp(workspace.updatedAt);
-      metadata.textContent = updatedLabel ? `Updated ${updatedLabel}` : "Update time unavailable";
-
-      button.append(titleRow, path, metadata);
+      button.append(titleRow, path);
       workspaceRow.append(toggleButton, button);
       group.append(workspaceRow);
 
@@ -964,6 +969,8 @@ export class AppRenderer {
 
             const threadTitleRow = document.createElement("div");
             threadTitleRow.className = "list-item-title-row";
+            const threadRightMeta = document.createElement("span");
+            threadRightMeta.className = "list-item-right-meta";
             const threadBadgeStack = document.createElement("span");
             threadBadgeStack.className = "list-item-badge-stack";
 
@@ -995,22 +1002,19 @@ export class AppRenderer {
               threadBadgeStack.append(createNavigationStateChip("error", "History Error"));
             }
 
-            threadTitleRow.append(threadTitle, threadBadgeStack);
+            const threadMeta = document.createElement("span");
+            threadMeta.className = "list-item-time";
+            const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
+            threadMeta.textContent = lastSeenLabel ?? "new";
+
+            threadRightMeta.append(threadMeta, threadBadgeStack);
+            threadTitleRow.append(threadTitle, threadRightMeta);
 
             const preview = document.createElement("span");
             preview.className = "list-item-preview";
             preview.textContent = previewText;
 
-            const threadId = document.createElement("span");
-            threadId.className = "list-item-id";
-            threadId.textContent = thread.threadId;
-
-            const threadMeta = document.createElement("span");
-            threadMeta.className = "list-item-meta";
-            const lastSeenLabel = formatRelativeTimestamp(thread.lastSeenAt);
-            threadMeta.textContent = lastSeenLabel ? `Last seen ${lastSeenLabel}` : "No recent activity";
-
-            threadButton.append(threadTitleRow, preview, threadId, threadMeta);
+            threadButton.append(threadTitleRow, preview);
             threadContainer.append(threadButton);
           }
         }
